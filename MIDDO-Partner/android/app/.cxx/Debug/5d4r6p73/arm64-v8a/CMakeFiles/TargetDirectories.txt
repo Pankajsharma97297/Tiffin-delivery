@@ -1,0 +1,15 @@
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/CMakeFiles/appmodules.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/CMakeFiles/edit_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/CMakeFiles/rebuild_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/AsyncStorageSpec_autolinked_build/CMakeFiles/react_codegen_AsyncStorageSpec.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/AsyncStorageSpec_autolinked_build/CMakeFiles/edit_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/AsyncStorageSpec_autolinked_build/CMakeFiles/rebuild_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/RNGoogleSignInCGen_autolinked_build/CMakeFiles/react_codegen_RNGoogleSignInCGen.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/RNGoogleSignInCGen_autolinked_build/CMakeFiles/edit_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/RNGoogleSignInCGen_autolinked_build/CMakeFiles/rebuild_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/RNRazorpayCheckoutSpec_autolinked_build/CMakeFiles/react_codegen_RNRazorpayCheckoutSpec.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/RNRazorpayCheckoutSpec_autolinked_build/CMakeFiles/edit_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/RNRazorpayCheckoutSpec_autolinked_build/CMakeFiles/rebuild_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/safeareacontext_autolinked_build/CMakeFiles/edit_cache.dir
+/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/Debug/5d4r6p73/arm64-v8a/safeareacontext_autolinked_build/CMakeFiles/rebuild_cache.dir

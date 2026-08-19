@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "1052737020088",
+    "project_id": "middo-partner",
+    "storage_bucket": "middo-partner.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1052737020088:android:9286df545df2928a8ad44d",
+        "android_client_info": {
+          "package_name": "com.cws.middopartner"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1052737020088-e4shpkc13sc6jno5bsjo42u1f8b1h6i3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.middopartner",
+            "certificate_hash": "398e3fe376ac5967f0671568d61995d6b5342cba"
+          }
+        },
+        {
+          "client_id": "1052737020088-enosrgtqddj0c4lnpkmv2k9tk2nnld4o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.middopartner",
+            "certificate_hash": "346a618603f02f4096b93de00e2427654ee25e08"
+          }
+        },
+        {
+          "client_id": "1052737020088-2ernhjnb7nrt12k22gecp9i0g0vmoal8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFaKYUjWq7P8rBA9TPPBxC26Umbqm2kYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1052737020088-2ernhjnb7nrt12k22gecp9i0g0vmoal8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

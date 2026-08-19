@@ -1,0 +1,4 @@
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/Debug/5tt5ul6y/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/foo.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/Debug/5tt5ul6y/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/boo.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/Debug/5tt5ul6y/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/edit_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/Debug/5tt5ul6y/x86_64/CMakeFiles/_CMakeLTOTest-CXX/bin/CMakeFiles/rebuild_cache.dir

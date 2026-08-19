@@ -1,0 +1,73 @@
+{
+  "buildFiles": [
+    "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/node_modules/@react-native-async-storage/async-storage/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/node_modules/@react-native-google-signin/google-signin/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/node_modules/react-native-razorpay/android/build/generated/source/codegen/jni/CMakeLists.txt",
+    "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/node_modules/react-native-safe-area-context/android/src/main/jni/CMakeLists.txt",
+    "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/node_modules/react-native/ReactAndroid/cmake-utils/default-app-setup/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/Users/cws/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/RelWithDebInfo/a1b2t2q5/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/Users/cws/Library/Android/sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/.cxx/RelWithDebInfo/a1b2t2q5/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "appmodules::@6890427a1f51a3e7e1df": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "appmodules",
+      "output": "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/build/intermediates/cxx/RelWithDebInfo/a1b2t2q5/obj/x86/libappmodules.so",
+      "runtimeFiles": [
+        "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/build/intermediates/cxx/RelWithDebInfo/a1b2t2q5/obj/x86/libreact_codegen_safeareacontext.so",
+        "/Users/cws/.gradle/caches/9.3.1/transforms/121951483f225619792d442073e4a902/transformed/fbjni-0.7.0/prefab/modules/fbjni/libs/android.x86/libfbjni.so",
+        "/Users/cws/.gradle/caches/9.3.1/transforms/508c359ce6108a6048c638660c075905/transformed/react-android-0.86.0-release/prefab/modules/jsi/libs/android.x86/libjsi.so",
+        "/Users/cws/.gradle/caches/9.3.1/transforms/508c359ce6108a6048c638660c075905/transformed/react-android-0.86.0-release/prefab/modules/reactnative/libs/android.x86/libreactnative.so"
+      ]
+    },
+    "react_codegen_AsyncStorageSpec::@15af80695a6281ecf900": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_AsyncStorageSpec"
+    },
+    "react_codegen_RNGoogleSignInCGen::@337b7b353bd94a4215c0": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_RNGoogleSignInCGen"
+    },
+    "react_codegen_RNRazorpayCheckoutSpec::@ba471378ee2eecf9e7b3": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_RNRazorpayCheckoutSpec"
+    },
+    "react_codegen_safeareacontext::@7984cd80db47aa7b952a": {
+      "toolchain": "toolchain",
+      "abi": "x86",
+      "artifactName": "react_codegen_safeareacontext",
+      "output": "/Users/cws/Desktop/MiddoTiffinDelivery/MIDDO/android/app/build/intermediates/cxx/RelWithDebInfo/a1b2t2q5/obj/x86/libreact_codegen_safeareacontext.so",
+      "runtimeFiles": [
+        "/Users/cws/.gradle/caches/9.3.1/transforms/121951483f225619792d442073e4a902/transformed/fbjni-0.7.0/prefab/modules/fbjni/libs/android.x86/libfbjni.so",
+        "/Users/cws/.gradle/caches/9.3.1/transforms/508c359ce6108a6048c638660c075905/transformed/react-android-0.86.0-release/prefab/modules/jsi/libs/android.x86/libjsi.so",
+        "/Users/cws/.gradle/caches/9.3.1/transforms/508c359ce6108a6048c638660c075905/transformed/react-android-0.86.0-release/prefab/modules/reactnative/libs/android.x86/libreactnative.so"
+      ]
+    }
+  },
+  "toolchains": {
+    "toolchain": {
+      "cCompilerExecutable": "/Users/cws/Library/Android/sdk/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang.lld",
+      "cppCompilerExecutable": "/Users/cws/Library/Android/sdk/ndk/27.1.12297006/toolchains/llvm/prebuilt/darwin-x86_64/bin/clang++.lld"
+    }
+  },
+  "cFileExtensions": [],
+  "cppFileExtensions": [
+    "cpp"
+  ]
+}
