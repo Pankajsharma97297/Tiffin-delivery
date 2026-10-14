@@ -32,7 +32,16 @@ const protect = asyncHandler(async (req, res, next) => {
     });
   }
 
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (_error) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+    });
+  }
   const user = await User.findById(decoded.id);
 
   if (!user || !user.isActive) {
@@ -78,7 +87,16 @@ const protectAnyAccount = asyncHandler(async (req, res, next) => {
     });
   }
 
-  const decoded = jwt.verify(token, process.env.JWT_SECRET);
+  let decoded;
+
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (_error) {
+    return res.status(401).json({
+      success: false,
+      message: "Invalid or expired token",
+    });
+  }
 
   if (decoded.role === "super_admin") {
     const superAdmin = await SuperAdmin.findById(decoded.id);

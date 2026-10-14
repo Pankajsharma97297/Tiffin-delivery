@@ -57,18 +57,21 @@ const contentDefaults = {
 const defaultPlans = [
   {
     name: "Trial Friendly Plan",
+    durationDays: 7,
     meals: "7 days · 1 meal/day",
     price: "₹699",
     status: "Visible",
   },
   {
     name: "Weekly Tiffin Plan",
+    durationDays: 7,
     meals: "7 days · Lunch + Dinner",
     price: "₹1,299",
     status: "Visible",
   },
   {
     name: "Monthly Tiffin Plan",
+    durationDays: 30,
     meals: "30 days · Lunch + Dinner",
     price: "₹4,999",
     status: "Visible",
@@ -185,19 +188,27 @@ const findCustomer = (input = {}) => {
 };
 
 const getPlanDuration = (plan = {}) => {
+  if (Number(plan.durationDays) > 0) {
+    return Number(plan.durationDays);
+  }
+
   const text = `${plan.name || ""} ${plan.meals || ""}`;
   const match = text.match(/(\d+)\s*(day|days)/i);
   return match ? Number(match[1]) : 7;
 };
 
+const customerVisiblePlanFilter = {
+  status: { $in: ["Visible", "Active", "", null] },
+};
+
 const listPlans = asyncHandler(async (req, res) => {
-  let plans = await Plan.find({ status: { $ne: "Hidden" } })
+  let plans = await Plan.find(customerVisiblePlanFilter)
     .sort({ createdAt: 1 })
     .lean();
 
   if (!plans.length) {
     await Plan.insertMany(defaultPlans, { ordered: false }).catch(() => undefined);
-    plans = await Plan.find({ status: { $ne: "Hidden" } })
+    plans = await Plan.find(customerVisiblePlanFilter)
       .sort({ createdAt: 1 })
       .lean();
   }
@@ -367,6 +378,7 @@ const purchaseSubscription = asyncHandler(async (req, res) => {
     amount,
     orderType: "subscription",
     address,
+    planId: String(plan._id),
     planType: plan.name,
     durationDays,
     totalMeals: durationDays,
@@ -389,6 +401,7 @@ const purchaseSubscription = asyncHandler(async (req, res) => {
     customer,
     customerEmail,
     customerPhone,
+    planId: String(plan._id),
     plan: plan.name,
     planType: plan.name,
     durationDays,

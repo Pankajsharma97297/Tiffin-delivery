@@ -3,12 +3,16 @@ const Notification = require("../models/Notification");
 const User = require("../models/User");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
+const { getCommissionSetting } = require("./commissionController");
 const {
   ensureVendorOrderNotifications,
-  sendPush,
 } = require("../utils/partnerNotifications");
+const {
+  getActiveCommissionRates,
+  summarizePartnerEarnings,
+} = require("../utils/partnerEarnings");
 
-const deliveryStatuses = ["Ready", "Out For Delivery"];
+const deliveryStatuses = ["Ready", "Out For Delivery", "Delivered"];
 const vendorStatuses = [
   "Order Confirmed",
   "Accepted",
@@ -34,9 +38,7 @@ const toUserRole = (partnerRole) =>
 
 const getPartnerIdentity = (req) => {
   const body = req.body || {};
-  const email = String(
-    req.user?.email || body.email || fallbackPartnerEmail,
-  )
+  const email = String(req.user?.email || body.email || "")
     .toLowerCase()
     .trim();
   const phone = String(req.user?.phone || body.phone || "").trim();
@@ -44,7 +46,7 @@ const getPartnerIdentity = (req) => {
   return {
     email,
     phone,
-    query: req.user?.id ? { _id: req.user.id } : { email },
+    query: { _id: req.user.id },
   };
 };
 
@@ -137,26 +139,56 @@ const getOrCreatePartnerUser = async (req, profilePatch = {}) => {
 const toAmountNumber = (value) =>
   Number(String(value || "").replace(/[^\d.]/g, "")) || 0;
 
+const buildVendorOrderFilters = (vendor = {}) => {
+  const profile = vendor.partnerProfile || {};
+  const vendorId = String(vendor._id || vendor.id || "").trim();
+  const email = String(vendor.email || profile.email || "").toLowerCase().trim();
+  const phone = String(vendor.phone || profile.phone || "").trim();
+  const names = [
+    vendor.name,
+    profile.name,
+    profile.kitchenName,
+    profile.owner,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  return [
+    vendorId ? { homeChefId: vendorId } : null,
+    vendorId ? { homeChefOwner: vendorId } : null,
+    email ? { homeChefOwner: email } : null,
+    phone ? { homeChefOwner: phone } : null,
+    ...names.flatMap((name) => [
+      { homeChefName: name },
+      { chef: name },
+      { homeChefOwner: name },
+    ]),
+  ].filter(Boolean);
+};
+
+const buildRiderOrderFilters = (rider = {}) => [
+  rider.id || rider._id ? { riderId: String(rider.id || rider._id) } : null,
+  rider.email ? { riderEmail: String(rider.email).toLowerCase().trim() } : null,
+  rider.phone ? { riderPhone: String(rider.phone).trim() } : null,
+].filter(Boolean);
+
 const listDeliveryOrders = asyncHandler(async (req, res) => {
   const statuses = req.user?.role === "rider" ? deliveryStatuses : vendorStatuses;
+  let partnerFilters = [];
 
   if (req.user?.role === "vendor") {
     const vendor = await User.findById(req.user.id).lean();
     await ensureVendorOrderNotifications(vendor).catch((error) => {
       console.warn("[partner-orders] Unable to ensure vendor notifications", error.message);
     });
+    partnerFilters = buildVendorOrderFilters(vendor || req.user);
+  } else if (req.user?.role === "rider") {
+    partnerFilters = buildRiderOrderFilters(req.user);
   }
 
-  const riderFilters = req.user?.role === "rider"
-    ? [
-        req.user.id ? { riderId: String(req.user.id) } : null,
-        req.user.email ? { riderEmail: String(req.user.email).toLowerCase().trim() } : null,
-        req.user.phone ? { riderPhone: String(req.user.phone).trim() } : null,
-      ].filter(Boolean)
-    : [];
   const orders = await Order.find({
     status: { $in: statuses },
-    ...(riderFilters.length ? { $or: riderFilters } : {}),
+    ...(partnerFilters.length ? { $or: partnerFilters } : { _id: null }),
   })
     .sort(
       req.user?.role === "rider"
@@ -191,6 +223,82 @@ const updatePartnerProfile = asyncHandler(async (req, res) => {
   const { profile, user } = await getOrCreatePartnerUser(req, req.body || {});
 
   return sendSuccess(res, 200, "Partner profile updated", { profile, user });
+});
+
+const updatePartnerKyc = asyncHandler(async (req, res) => {
+  if (!req.user?.id) {
+    return res.status(401).json({
+      success: false,
+      message: "Partner login is required to submit KYC",
+    });
+  }
+
+  const documents = Array.isArray(req.body?.documents)
+    ? req.body.documents
+        .map((document) => ({
+          key: String(document.key || "").trim(),
+          label: String(document.label || "").trim(),
+          url: String(document.url || "").trim(),
+          uploadedAt: document.uploadedAt || new Date().toISOString(),
+        }))
+        .filter((document) => document.key && document.url)
+    : [];
+  const existingUser = await User.findById(req.user?.id).lean();
+  const existingDocuments = Array.isArray(existingUser?.partnerProfile?.kycDocuments)
+    ? existingUser.partnerProfile.kycDocuments
+    : [];
+  const byKey = new Map(existingDocuments.map((document) => [document.key, document]));
+
+  documents.forEach((document) => {
+    byKey.set(document.key, document);
+  });
+
+  const nextDocuments = Array.from(byKey.values());
+  const { profile, user } = await getOrCreatePartnerUser(req, {
+    kycDocuments: nextDocuments,
+    kycStatus: nextDocuments.length ? "Pending Review" : "Not Submitted",
+    kycSubmittedAt: nextDocuments.length ? new Date() : null,
+    kycReviewedAt: null,
+    kycReviewNote: "",
+  });
+
+  return sendSuccess(res, 200, "Partner KYC submitted", { profile, user });
+});
+
+const reviewPartnerKyc = asyncHandler(async (req, res) => {
+  const status = req.body?.status === "Rejected" ? "Rejected" : "Approved";
+  const note = String(req.body?.note || "").trim();
+  const user = await User.findById(req.params.userId);
+
+  if (!user || !["vendor", "rider"].includes(user.role)) {
+    return res.status(404).json({
+      success: false,
+      message: "Partner account not found",
+    });
+  }
+
+  user.partnerProfile = {
+    ...(user.partnerProfile || {}),
+    kycStatus: status,
+    kycReviewedAt: new Date(),
+    kycReviewNote: note,
+  };
+  user.markModified("partnerProfile");
+  await user.save();
+
+  return sendSuccess(res, 200, `Partner KYC ${status.toLowerCase()}`, {
+    partner: {
+      _id: user._id,
+      role: user.role,
+      name: user.partnerProfile?.name || user.name,
+      email: user.partnerProfile?.email || user.email,
+      phone: user.partnerProfile?.phone || user.phone,
+      kycStatus: user.partnerProfile?.kycStatus || "Not Submitted",
+      kycDocuments: user.partnerProfile?.kycDocuments || [],
+      kycReviewedAt: user.partnerProfile?.kycReviewedAt,
+      kycReviewNote: user.partnerProfile?.kycReviewNote || "",
+    },
+  });
 });
 
 const updatePartnerRole = asyncHandler(async (req, res) => {
@@ -268,6 +376,13 @@ const getHomeChefPhotos = asyncHandler(async (req, res) => {
 const registerPartnerPushToken = asyncHandler(async (req, res) => {
   const { pushToken } = req.body || {};
 
+  if (!req.user?.id) {
+    return res.status(401).json({
+      success: false,
+      message: "Partner login is required to register push notifications",
+    });
+  }
+
   if (!pushToken) {
     return res.status(400).json({
       success: false,
@@ -280,6 +395,7 @@ const registerPartnerPushToken = asyncHandler(async (req, res) => {
   });
 
   return sendSuccess(res, 200, "Partner push token registered", {
+    pushTokenRegistered: Boolean(user?.pushToken || user?.partnerProfile?.pushToken),
     profile,
     user,
   });
@@ -318,42 +434,33 @@ const listPartnerNotifications = asyncHandler(async (req, res) => {
   });
 });
 
-const sendPartnerTestPush = asyncHandler(async (req, res) => {
-  const identity = getPartnerIdentity(req);
-  const user = await User.findOne(identity.query).lean();
-  const token = user?.pushToken || user?.partnerProfile?.pushToken;
-
-  if (!token) {
-    return res.status(400).json({
+const clearPartnerNotifications = asyncHandler(async (req, res) => {
+  if (!req.user?.id) {
+    return res.status(401).json({
       success: false,
-      message: "Partner push token is not registered on this account",
+      message: "Partner login is required to clear notifications",
     });
   }
 
-  const pushed = await sendPush({
-    token,
-    title: "MIDDO test notification",
-    body: "Push notification setup working hai",
-    data: {
-      type: "partner_test_push",
-      screen: "alerts",
-    },
-  }).catch((error) => {
-    return {
-      code: error?.code,
-      message: error?.message,
-    };
+  const filters = [
+    { recipientId: String(req.user.id) },
+    req.user.email ? { recipientEmail: String(req.user.email).toLowerCase().trim() } : null,
+  ].filter(Boolean);
+
+  if (!filters.length) {
+    return sendSuccess(res, 200, "Partner notifications cleared", {
+      deletedCount: 0,
+    });
+  }
+
+  const result = await Notification.deleteMany({
+    status: { $ne: "Draft" },
+    $or: filters,
   });
 
-  if (pushed !== true) {
-    return res.status(500).json({
-      success: false,
-      message: "Push send failed",
-      error: pushed,
-    });
-  }
-
-  return sendSuccess(res, 200, "Test push sent", { pushed: true });
+  return sendSuccess(res, 200, "Partner notifications cleared", {
+    deletedCount: result.deletedCount || 0,
+  });
 });
 
 const updateHomeChefPhotos = asyncHandler(async (req, res) => {
@@ -367,18 +474,27 @@ const updateHomeChefPhotos = asyncHandler(async (req, res) => {
 });
 
 const getDeliveryOrderDashboard = asyncHandler(async (req, res) => {
-  const { profile } = await getOrCreatePartnerUser(req);
+  const { profile, user } = await getOrCreatePartnerUser(req);
   const dailyCapacity = Number(profile.dailyCapacity || 150);
-  const orders = await Order.find({}).lean();
+  const partnerFilters =
+    req.user?.role === "rider"
+      ? buildRiderOrderFilters(req.user)
+      : buildVendorOrderFilters(user || req.user);
+  const orders = await Order.find(
+    partnerFilters.length ? { $or: partnerFilters } : { _id: null },
+  ).lean();
+  const commissionRates = getActiveCommissionRates(await getCommissionSetting());
+  const partnerPercent =
+    req.user?.role === "rider"
+      ? commissionRates.riderCommissionPercent
+      : commissionRates.vendorCommissionPercent;
+  const earningsSummary = summarizePartnerEarnings(orders, partnerPercent);
   const dashboard = orders.reduce(
     (totals, order) => {
-      const amount = toAmountNumber(order.amount);
-
       totals.todayOrders += 1;
 
       if (order.status === "Delivered") {
         totals.completedOrders += 1;
-        totals.earnings += amount;
       } else {
         totals.pendingOrders += 1;
       }
@@ -395,9 +511,10 @@ const getDeliveryOrderDashboard = asyncHandler(async (req, res) => {
     },
     {
       completedOrders: 0,
-      earnings: 0,
+      earnings: earningsSummary.totalEarned,
       mealSlots: [],
       pendingOrders: 0,
+      remainingCapacity: 150,
       subscriptionOrders: 0,
       todayOrders: 0,
       trialOrders: 0,
@@ -406,11 +523,18 @@ const getDeliveryOrderDashboard = asyncHandler(async (req, res) => {
   );
   dashboard.capacityReached = dashboard.todayOrders >= dailyCapacity;
   dashboard.remainingCapacity = Math.max(0, dailyCapacity - dashboard.todayOrders);
+  dashboard.commissionPercent = partnerPercent;
+  dashboard.commissionActive = commissionRates.isActive;
+  dashboard.pendingPayout = earningsSummary.pendingPayout;
+  dashboard.settled = earningsSummary.settled;
+  dashboard.totalEarned = earningsSummary.totalEarned;
+  dashboard.payoutHistory = earningsSummary.history;
 
   return sendSuccess(res, 200, "Partner dashboard fetched", { dashboard });
 });
 
 module.exports = {
+  clearPartnerNotifications,
   getDeliveryOrderDashboard,
   getDeliveryOrderById,
   getHomeChefMenu,
@@ -420,11 +544,12 @@ module.exports = {
   isVendorKitchenOpen,
   listPartnerNotifications,
   registerPartnerPushToken,
-  sendPartnerTestPush,
   listDeliveryOrders,
   updateHomeChefMenu,
   updateHomeChefPhotos,
   updatePartnerAvailability,
+  updatePartnerKyc,
   updatePartnerProfile,
   updatePartnerRole,
+  reviewPartnerKyc,
 };

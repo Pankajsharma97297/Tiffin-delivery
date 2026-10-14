@@ -1,0 +1,12 @@
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/CMakeFiles/appmodules.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/CMakeFiles/edit_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/CMakeFiles/rebuild_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/AsyncStorageSpec_autolinked_build/CMakeFiles/react_codegen_AsyncStorageSpec.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/AsyncStorageSpec_autolinked_build/CMakeFiles/edit_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/AsyncStorageSpec_autolinked_build/CMakeFiles/rebuild_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/RNGoogleSignInCGen_autolinked_build/CMakeFiles/react_codegen_RNGoogleSignInCGen.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/RNGoogleSignInCGen_autolinked_build/CMakeFiles/edit_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/RNGoogleSignInCGen_autolinked_build/CMakeFiles/rebuild_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/safeareacontext_autolinked_build/CMakeFiles/react_codegen_safeareacontext.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/safeareacontext_autolinked_build/CMakeFiles/edit_cache.dir
+D:/Tiffin-delivery/MIDDO-Partner/android/app/.cxx/RelWithDebInfo/v5q1s3u4/armeabi-v7a/safeareacontext_autolinked_build/CMakeFiles/rebuild_cache.dir

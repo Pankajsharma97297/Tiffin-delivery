@@ -1,0 +1,116 @@
+{
+  "project_info": {
+    "project_number": "1052737020088",
+    "project_id": "middo-partner",
+    "storage_bucket": "middo-partner.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1052737020088:android:9286df545df2928a8ad44d",
+        "android_client_info": {
+          "package_name": "com.cws.middopartner"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1052737020088-5puhncp2trt083473st8hc1j4f4693ng.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.middopartner",
+            "certificate_hash": "2df77214984f4b12ec24613de6049441d6f3225d"
+          }
+        },
+        {
+          "client_id": "1052737020088-e4shpkc13sc6jno5bsjo42u1f8b1h6i3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.middopartner",
+            "certificate_hash": "398e3fe376ac5967f0671568d61995d6b5342cba"
+          }
+        },
+        {
+          "client_id": "1052737020088-enosrgtqddj0c4lnpkmv2k9tk2nnld4o.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.middopartner",
+            "certificate_hash": "346a618603f02f4096b93de00e2427654ee25e08"
+          }
+        },
+        {
+          "client_id": "1052737020088-mltdnijckk7i00u25v904r6jmaohi2tu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.middopartner",
+            "certificate_hash": "05727c6f70be7b15dc83a7e27027b5efc2077027"
+          }
+        },
+        {
+          "client_id": "1052737020088-2ernhjnb7nrt12k22gecp9i0g0vmoal8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFaKYUjWq7P8rBA9TPPBxC26Umbqm2kYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1052737020088-2ernhjnb7nrt12k22gecp9i0g0vmoal8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1052737020088:android:c8fa6aea67c1d85a8ad44d",
+        "android_client_info": {
+          "package_name": "com.cws.tiffinapp"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1052737020088-44q8n23o08ff5ic7beajao1lvef3868p.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.tiffinapp",
+            "certificate_hash": "8d6d06a28efd28d86dc469b2988f8be7b3facdca"
+          }
+        },
+        {
+          "client_id": "1052737020088-tlg51qqodic430rfkbmcdt2mehlorshn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.cws.tiffinapp",
+            "certificate_hash": "d103068d6a79fc0c11a3c8496fb55be505ab8136"
+          }
+        },
+        {
+          "client_id": "1052737020088-2ernhjnb7nrt12k22gecp9i0g0vmoal8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDFaKYUjWq7P8rBA9TPPBxC26Umbqm2kYU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1052737020088-2ernhjnb7nrt12k22gecp9i0g0vmoal8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -21,6 +21,7 @@ const buildCustomerSubscriptionFilter = (subscription = {}) => {
 const toActiveSubscriptionSummary = (subscription = {}) => ({
   subscriptionId: String(subscription._id || subscription.subscriptionId || ""),
   orderId: subscription.orderId,
+  planId: subscription.planId,
   plan: subscription.plan,
   planType: subscription.planType,
   status: subscription.status,

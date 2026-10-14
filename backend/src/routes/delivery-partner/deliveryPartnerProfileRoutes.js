@@ -1,42 +1,36 @@
 const express = require("express");
 
 const {
+  clearPartnerNotifications,
   getHomeChefMenu,
   getHomeChefPhotos,
   getPartnerProfile,
   listPartnerNotifications,
   registerPartnerPushToken,
-  sendPartnerTestPush,
   updateHomeChefMenu,
   updateHomeChefPhotos,
   updatePartnerAvailability,
+  updatePartnerKyc,
   updatePartnerProfile,
   updatePartnerRole,
 } = require("../../controllers/deliveryPartnerController");
 const {
-  optionalProtect,
+  protect,
   requireRoles,
 } = require("../../middleware/authMiddleware");
 
 const router = express.Router();
 
-const allowBypassOrPartner = (req, res, next) => {
-  if (!req.user) {
-    return next();
-  }
-
-  return requireRoles("rider", "vendor")(req, res, next);
-};
-
-router.use(optionalProtect, allowBypassOrPartner);
+router.use(protect, requireRoles("rider", "vendor"));
 
 router.get("/", getPartnerProfile);
 router.patch("/", updatePartnerProfile);
 router.patch("/role", updatePartnerRole);
 router.patch("/availability", updatePartnerAvailability);
+router.patch("/kyc", updatePartnerKyc);
 router.get("/notifications", listPartnerNotifications);
+router.delete("/notifications", clearPartnerNotifications);
 router.post("/notifications/register-device", registerPartnerPushToken);
-router.post("/notifications/test-push", sendPartnerTestPush);
 router.get("/menu", getHomeChefMenu);
 router.patch("/menu", updateHomeChefMenu);
 router.get("/photos", getHomeChefPhotos);

@@ -3,8 +3,8 @@ import { getEnv } from './env';
 
 const localApiBaseUrl =
   Platform.OS === 'android'
-    ? 'http://10.219.226.201:3000'
-    : 'http://10.219.226.201:3000';
+    ? 'http://162.240.223.89:3002'
+    : 'http://192.168.29.163:3002';
 
 const configuredApiBaseUrl =
   getEnv('MIDDO_PARTNER_API_BASE_URL') ||

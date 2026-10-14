@@ -17,6 +17,7 @@ const manageableTables = [
   "reviews",
   "scheduleItems",
   "subscriptions",
+  "subscriptionRequests",
   "supportTickets",
   "walletTransactions",
 ];

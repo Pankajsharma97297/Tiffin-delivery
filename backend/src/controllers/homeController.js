@@ -1,4 +1,5 @@
 const Category = require("../models/Category");
+const { getCommissionSetting } = require("./commissionController");
 const Customer = require("../models/Customer");
 const HomeChefChangeRequest = require("../models/HomeChefChangeRequest");
 const HomeChefChangeSetting = require("../models/HomeChefChangeSetting");
@@ -13,10 +14,16 @@ const ScheduleItem = require("../models/ScheduleItem");
 const Subscription = require("../models/Subscription");
 const SubscriptionRequest = require("../models/SubscriptionRequest");
 const SupportTicket = require("../models/SupportTicket");
+const User = require("../models/User");
 const WalletTransaction = require("../models/WalletTransaction");
 const asyncHandler = require("../utils/asyncHandler");
 const { sendSuccess } = require("../utils/apiResponse");
 const { buildMealsFromSchedule, dayOrder } = require("../utils/tiffinSchedule");
+const {
+  getActiveCommissionRates,
+  parseMoney,
+  partnerShare,
+} = require("../utils/partnerEarnings");
 
 const weeklyMenuOrder = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
@@ -462,6 +469,8 @@ const submitSubscriptionRequest = asyncHandler(async (req, res) => {
     mealDate,
     mealTitle,
     newAddress,
+    newLatitude,
+    newLongitude,
     reason,
     requestType,
     subscriptionId,
@@ -523,6 +532,14 @@ const submitSubscriptionRequest = asyncHandler(async (req, res) => {
     reason,
     currentAddress: currentAddress || subscription.address,
     newAddress,
+    newLatitude:
+      newLatitude === undefined || newLatitude === null || newLatitude === ""
+        ? undefined
+        : Number(newLatitude),
+    newLongitude:
+      newLongitude === undefined || newLongitude === null || newLongitude === ""
+        ? undefined
+        : Number(newLongitude),
     status: requestType === "skip_meal" ? "Approved" : "Pending Admin Approval",
   });
 
@@ -588,8 +605,12 @@ const assignScheduleMeal = asyncHandler(async (req, res) => {
   return sendSuccess(res, 200, "Schedule meal assigned", { scheduleItem });
 });
 
+const formatMoney = (value) => `₹${Math.round(value).toLocaleString("en-IN")}`;
+
 const getAdminDashboard = asyncHandler(async (req, res) => {
-  const [
+  await expireElapsedSubscriptions();
+
+  let [
     orders,
     subscriptions,
     chefs,
@@ -601,9 +622,11 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
     notifications,
     products,
     scheduleItems,
+    partnerUsers,
+    commissionSetting,
   ] = await Promise.all([
     Order.find().sort({ createdAt: -1 }).lean(),
-    Subscription.find().lean(),
+    Subscription.find().sort({ createdAt: -1 }).lean(),
     HomeChef.find().lean(),
     Customer.find().lean(),
     Plan.find().lean(),
@@ -613,37 +636,201 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
     Notification.find().lean(),
     Product.find().sort({ createdAt: -1 }).lean(),
     ScheduleItem.find().sort({ sortOrder: 1 }).lean(),
+    User.find({ role: { $in: ["vendor", "rider", "customer"] } })
+      .sort({ updatedAt: -1, createdAt: -1 })
+      .select("-password")
+      .lean(),
+    getCommissionSetting(),
   ]);
 
-  const totalRevenue = orders.reduce((sum, order) => {
-    const amount = Number(String(order.amount || "").replace(/[^\d.-]/g, ""));
-    return sum + (Number.isFinite(amount) ? amount : 0);
-  }, 0);
+  // Merge customer user accounts if not present in customer docs
+  const customerList = [...(customers || [])];
+  const customerPhones = new Set(customerList.map(c => String(c.phone || "").trim()).filter(Boolean));
+  const customerEmails = new Set(customerList.map(c => String(c.email || "").toLowerCase().trim()).filter(Boolean));
+
+  (partnerUsers || []).filter(u => u.role === "customer").forEach(u => {
+    const phone = String(u.phone || "").trim();
+    const email = String(u.email || "").toLowerCase().trim();
+    const hasMatch = (phone && customerPhones.has(phone)) || (email && customerEmails.has(email));
+    if (!hasMatch) {
+      customerList.push({
+        _id: u._id,
+        name: u.name || "MIDDO Customer",
+        avatar: u.avatar || u.partnerProfile?.avatar || "",
+        phone: u.phone,
+        email: u.email,
+        authProvider: u.authProvider || "local",
+        location: u.city || "",
+        address: u.address || u.partnerProfile?.address || "",
+        liveAddress: u.partnerProfile?.liveAddress || u.address || "",
+        latitude: u.partnerProfile?.latitude,
+        longitude: u.partnerProfile?.longitude,
+        walletBalance: 0,
+        orders: 0,
+      });
+      if (phone) customerPhones.add(phone);
+      if (email) customerEmails.add(email);
+    }
+  });
+
+  // Merge vendor/homechef user accounts if not present in chefs
+  const chefList = [...(chefs || [])];
+  const chefNames = new Set(chefList.map(c => String(c.name || '').toLowerCase().trim()).filter(Boolean));
+  const chefEmails = new Set(chefList.map(c => String(c.email || '').toLowerCase().trim()).filter(Boolean));
+  const chefIds = new Set(chefList.map(c => String(c._id || '')).filter(Boolean));
+
+  (partnerUsers || []).filter(u => u.role === "vendor").forEach(u => {
+    const profile = u.partnerProfile || {};
+    const kitchenName = profile.kitchenName || profile.name || u.name;
+    const email = String(u.email || profile.email || '').toLowerCase().trim();
+    const cleanKitchen = String(kitchenName || '').toLowerCase().trim();
+    const userId = String(u._id || '');
+
+    if (!chefIds.has(userId) && (!cleanKitchen || !chefNames.has(cleanKitchen)) && (!email || !chefEmails.has(email))) {
+      chefList.push({
+        _id: u._id,
+        name: kitchenName,
+        owner: profile.owner || profile.name || u.name,
+        email: u.email || profile.email || "",
+        avatar: profile.avatar || u.avatar || "",
+        phone: u.phone || profile.phone || "",
+        cuisine: profile.cuisine || profile.category || "North Indian",
+        tags: profile.tags || ["Veg", "Home Style"],
+        address: profile.address || profile.location || profile.city || "",
+        liveAddress: profile.liveAddress || profile.address || profile.location || "",
+        location: profile.city || profile.location || "",
+        latitude: profile.latitude,
+        longitude: profile.longitude,
+        weeklyMenu: profile.weeklyMenu || [],
+        sampleMenu: profile.sampleMenu || [],
+        rating: profile.rating || "4.8",
+        orders: profile.orders || 0,
+        status: u.isActive ? (profile.kycStatus === "Approved" ? "Active" : "Review") : "Inactive",
+      });
+      if (cleanKitchen) chefNames.add(cleanKitchen);
+      if (email) chefEmails.add(email);
+      if (userId) chefIds.add(userId);
+    }
+  });
+
+  // Calculate REAL order counts and REAL ratings for every chef in chefList from DB orders & reviews
+  const populatedChefList = chefList.map(chef => {
+    const matchingVendor = (partnerUsers || []).find(user => {
+      const profile = user.partnerProfile || {};
+      const identities = [
+        user._id,
+        user.email,
+        user.name,
+        profile.email,
+        profile.name,
+        profile.kitchenName,
+      ].map(value => String(value || '').toLowerCase().trim()).filter(Boolean);
+      const chefIdentities = [chef._id, chef.email, chef.name, chef.owner]
+        .map(value => String(value || '').toLowerCase().trim())
+        .filter(Boolean);
+
+      return chefIdentities.some(identity => identities.includes(identity));
+    });
+
+    const chefIdentifiers = [
+      String(chef._id || "").toLowerCase(),
+      String(chef.name || "").toLowerCase(),
+      String(chef.owner || "").toLowerCase(),
+      String(chef.email || "").toLowerCase(),
+    ].filter(Boolean);
+
+    // Calculate real orders assigned to this chef from Order collection
+    const matchingOrders = (orders || []).filter(order => {
+      const orderChefIds = [
+        order.homeChefId,
+        order.homeChefName,
+        order.homeChefOwner,
+        order.chef,
+      ].map(v => String(v || "").toLowerCase().trim()).filter(Boolean);
+      return orderChefIds.some(id => chefIdentifiers.includes(id));
+    });
+
+    const realOrdersCount = Math.max(Number(chef.orders || 0), matchingOrders.length);
+
+    // Calculate real average rating from reviews collection
+    const chefReviews = (reviews || []).filter(r => {
+      const reviewChef = String(r.chef || "").toLowerCase().trim();
+      return reviewChef && chefIdentifiers.some(id => id.includes(reviewChef) || reviewChef.includes(id));
+    });
+
+    let realRating = chef.rating;
+    if (chefReviews.length > 0) {
+      const sum = chefReviews.reduce((acc, r) => acc + (parseFloat(r.rating) || 0), 0);
+      realRating = (sum / chefReviews.length).toFixed(1);
+    } else if (!realRating || realRating === "4.8") {
+      realRating = (chef.reviewCount && Number(chef.reviewCount) > 0) ? String(chef.rating || "4.5") : "New";
+    }
+
+    return {
+      ...chef,
+      avatar: chef.avatar || matchingVendor?.partnerProfile?.avatar || matchingVendor?.avatar || '',
+      orders: realOrdersCount,
+      rating: realRating,
+    };
+  });
+
+  const startOfToday = new Date();
+  startOfToday.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(startOfToday);
+  endOfToday.setDate(endOfToday.getDate() + 1);
+  const todayOrders = orders.filter((order) => {
+    const createdAt = order.createdAt ? new Date(order.createdAt) : null;
+    return createdAt && createdAt >= startOfToday && createdAt < endOfToday;
+  });
+  const totalRevenue = orders.reduce((sum, order) => sum + parseMoney(order.amount), 0);
+  const todayRevenue = todayOrders.reduce((sum, order) => sum + parseMoney(order.amount), 0);
+  const paidRevenue = orders
+    .filter((order) => String(order.paymentStatus || "Paid").toLowerCase() === "paid")
+    .reduce((sum, order) => sum + parseMoney(order.amount), 0);
+  const todayPaidRevenue = todayOrders
+    .filter((order) => String(order.paymentStatus || "Paid").toLowerCase() === "paid")
+    .reduce((sum, order) => sum + parseMoney(order.amount), 0);
+  const refundTotal = walletTransactions
+    .filter((transaction) => /refund/i.test(String(transaction.type || transaction.note || "")))
+    .reduce((sum, transaction) => sum + parseMoney(transaction.amount), 0);
+  const activeSubscriptions = subscriptions.filter(
+    (subscription) => String(subscription.status || "Active") === "Active",
+  );
+  const skippedMeals = subscriptions.reduce(
+    (sum, subscription) => sum + (Number(subscription.skipped || 0) || 0),
+    0,
+  );
+  const pendingPayments = orders.filter(
+    (order) => String(order.paymentStatus || "Paid").toLowerCase() !== "paid",
+  ).length;
+  const commissionRates = getActiveCommissionRates(commissionSetting);
+  const vendorCommissionRate = commissionRates.vendorCommissionPercent;
+  const riderCommissionRate = commissionRates.riderCommissionPercent;
 
   const adminDashboard = {
     metrics: [
       {
         label: "Today Orders",
-        value: String(orders.length),
-        delta: "+18%",
+        value: String(todayOrders.length),
+        delta: `${orders.filter((order) => order.status !== "Delivered").length} live total`,
         tone: "green",
       },
       {
         label: "Active Subscriptions",
-        value: String(subscriptions.length),
-        delta: "+7%",
+        value: String(activeSubscriptions.length),
+        delta: `${subscriptions.length} total`,
         tone: "green",
       },
       {
         label: "Revenue Today",
-        value: `₹${totalRevenue.toLocaleString("en-IN")}`,
-        delta: "+12%",
+        value: formatMoney(todayRevenue),
+        delta: `${pendingPayments} pending payments`,
         tone: "green",
       },
       {
         label: "Open Tickets",
         value: String(supportTickets.length),
-        delta: "-9%",
+        delta: `${supportTickets.filter((ticket) => ticket.status !== "Closed").length} unresolved`,
         tone: "orange",
       },
     ],
@@ -656,7 +843,19 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
       amount: order.amount,
       eta: order.eta,
       address: order.address,
+      homeChefId: order.homeChefId,
+      homeChefName: order.homeChefName,
+      homeChefOwner: order.homeChefOwner,
       orderType: order.orderType,
+      riderId: order.riderId,
+      riderName: order.riderName,
+      riderPhone: order.riderPhone,
+      riderEmail: order.riderEmail,
+      deliveryPartnerName: order.riderName,
+      deliveryPartnerPhone: order.riderPhone,
+      deliveryPartnerEmail: order.riderEmail,
+      deliveryBatchId: order.deliveryBatchId,
+      deliverySequence: order.deliverySequence,
       paymentMethod: order.paymentMethod,
       paymentProvider: order.paymentProvider,
       paymentId: order.paymentId,
@@ -665,10 +864,11 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
       updatedAt: order.updatedAt,
     })),
     subscriptions,
-    chefs,
-    customers: customers.map((customer) => ({
+    chefs: populatedChefList,
+    customers: customerList.map((customer) => ({
       _id: customer._id,
       name: customer.name,
+      avatar: customer.avatar || "",
       phone: customer.phone,
       email: customer.email,
       source: customer.authProvider || "local",
@@ -677,18 +877,186 @@ const getAdminDashboard = asyncHandler(async (req, res) => {
       liveAddress: customer.liveAddress,
       latitude: customer.latitude,
       longitude: customer.longitude,
-      walletBalance: customer.walletBalance,
-      wallet: `₹${customer.walletBalance}`,
-      orders: customer.orders,
+      walletBalance: customer.walletBalance || 0,
+      wallet: `₹${customer.walletBalance || 0}`,
+      orders: customer.orders || 0,
     })),
     plans,
     walletTransactions,
+    commissionSettings: {
+      vendorCommissionPercent: vendorCommissionRate,
+      riderCommissionPercent: riderCommissionRate,
+      isActive: commissionSetting?.isActive !== false,
+      updatedAt: commissionSetting?.updatedAt,
+      updatedBy: commissionSetting?.updatedBy || "",
+    },
+    reports: {
+      sales: [
+        { label: "Today Sales", value: formatMoney(todayRevenue), note: `${todayOrders.length} orders created today` },
+        { label: "Total Sales", value: formatMoney(totalRevenue), note: `${orders.length} total orders` },
+        { label: "Today Paid Online", value: formatMoney(todayPaidRevenue), note: "UPI/Card/Net Banking/Wallet" },
+        { label: "Total Paid Online", value: formatMoney(paidRevenue), note: "All paid online/wallet orders" },
+        { label: "Refunds", value: formatMoney(refundTotal), note: "Wallet refund transactions" },
+      ],
+      subscriptions: [
+        { label: "Active", value: String(activeSubscriptions.length), note: "Live customer plans" },
+        { label: "Expired", value: String(subscriptions.filter((item) => item.status === "Expired").length), note: "Completed/cancelled plans" },
+        { label: "Skipped Meals", value: String(skippedMeals), note: "Calendar skip usage" },
+      ],
+      commission: [
+        { label: "Vendor Commission Rate", value: `${vendorCommissionRate}%`, note: "Set by admin" },
+        { label: "Rider Commission Rate", value: `${riderCommissionRate}%`, note: "Set by admin" },
+        { label: "Paid Revenue Base", value: formatMoney(paidRevenue), note: "Real paid order amount" },
+      ],
+      vendorPerformance: [],
+      riderPerformance: [],
+    },
     reviews,
     supportTickets,
     notifications,
     products,
     scheduleItems,
+    vendors: partnerUsers
+      .filter((user) => user.role === "vendor")
+      .map((user) => {
+        const profile = user.partnerProfile || {};
+        const vendorOrders = orders.filter((order) => {
+          const identities = [
+            order.homeChefId,
+            order.homeChefName,
+            order.homeChefOwner,
+            order.chef,
+          ].map((value) => String(value || "").toLowerCase());
+          return (
+            identities.includes(String(user._id).toLowerCase()) ||
+            identities.includes(String(user.name || "").toLowerCase()) ||
+            identities.includes(String(profile.name || "").toLowerCase())
+          );
+        });
+        const acceptedOrders = vendorOrders.filter((order) =>
+          ["Accepted", "Preparing", "Ready", "Out For Delivery", "Delivered"].includes(
+            order.status,
+          ),
+        ).length;
+        const dailyCapacity = Number(profile.dailyCapacity || 150);
+
+        return {
+          _id: user._id,
+          name: profile.name || user.name,
+          email: profile.email || user.email,
+          phone: profile.phone || user.phone,
+          avatar: profile.avatar || user.avatar,
+          city: profile.city || "",
+          pincode: profile.pincode || "",
+          status: user.isActive && profile.kycStatus === "Approved" ? "Approved" : "Pending Approval",
+          kycStatus: profile.kycStatus || "Not Submitted",
+          kycDocuments: profile.kycDocuments || [],
+          kycSubmittedAt: profile.kycSubmittedAt,
+          kycReviewedAt: profile.kycReviewedAt,
+          kycReviewNote: profile.kycReviewNote || "",
+          kitchenOpen: profile.kitchenOpen !== false,
+          isOnline: profile.kitchenOpen !== false,
+          dailyCapacity,
+          acceptedOrders,
+          remainingCapacity: Math.max(0, dailyCapacity - acceptedOrders),
+          earnings: vendorOrders.reduce(
+            (sum, order) => sum + partnerShare(order.amount, vendorCommissionRate),
+            0,
+          ),
+          commission: vendorOrders.reduce(
+            (sum, order) => sum + partnerShare(order.amount, vendorCommissionRate),
+            0,
+          ),
+          orders: vendorOrders.length,
+          sampleMenu: profile.sampleMenu || [],
+          weeklyMenu: profile.weeklyMenu || [],
+          photos: profile.photos || [],
+        };
+      }),
+    riders: partnerUsers
+      .filter((user) => user.role === "rider")
+      .map((user) => {
+        const profile = user.partnerProfile || {};
+        const riderOrders = orders
+          .filter(
+            (order) =>
+              String(order.riderId || "") === String(user._id) ||
+              String(order.riderEmail || "").toLowerCase() ===
+                String(user.email || "").toLowerCase() ||
+              String(order.riderPhone || "") === String(user.phone || ""),
+          )
+          .sort(
+            (left, right) =>
+              Number(left.deliverySequence || 0) - Number(right.deliverySequence || 0),
+          );
+
+        return {
+          _id: user._id,
+          name: profile.name || user.name,
+          email: profile.email || user.email,
+          phone: profile.phone || user.phone,
+          avatar: profile.avatar || user.avatar,
+          city: profile.city || "",
+          status: user.isActive ? "Active" : "Inactive",
+          kycStatus: profile.kycStatus || "Not Submitted",
+          kycDocuments: profile.kycDocuments || [],
+          kycSubmittedAt: profile.kycSubmittedAt,
+          kycReviewedAt: profile.kycReviewedAt,
+          kycReviewNote: profile.kycReviewNote || "",
+          isOnline: profile.isOnline !== false,
+          assignedDeliveries: riderOrders.filter((order) => order.status !== "Delivered")
+            .length,
+          completedDeliveries: riderOrders.filter((order) => order.status === "Delivered")
+            .length,
+          earnings: riderOrders.reduce(
+            (sum, order) => sum + partnerShare(order.amount, riderCommissionRate),
+            0,
+          ),
+          commission: riderOrders.reduce(
+            (sum, order) => sum + partnerShare(order.amount, riderCommissionRate),
+            0,
+          ),
+          currentBatch: riderOrders[0]?.deliveryBatchId || "",
+          route: riderOrders.map((order) => ({
+            orderId: order.orderId,
+            customer: order.customer,
+            address: order.address,
+            status: order.status,
+            sequence: order.deliverySequence || 0,
+          })),
+        };
+      }),
   };
+
+  adminDashboard.reports.vendorPerformance = adminDashboard.vendors
+    .map((vendor) => ({
+      label: vendor.name || "-",
+      value: `${vendor.orders || 0} orders`,
+      note: `Payout ${formatMoney(vendor.earnings || 0)} · Rate ${vendorCommissionRate}%`,
+    }))
+    .slice(0, 8);
+  adminDashboard.reports.riderPerformance = adminDashboard.riders
+    .map((rider) => ({
+      label: rider.name || "-",
+      value: `${rider.completedDeliveries || 0} delivered`,
+      note: `Assigned ${rider.assignedDeliveries || 0} · Payout ${formatMoney(rider.commission || 0)}`,
+    }))
+    .slice(0, 8);
+  const totalVendorCommission = adminDashboard.vendors.reduce(
+    (sum, vendor) => sum + (Number(vendor.commission || 0) || 0),
+    0,
+  );
+  const totalRiderCommission = adminDashboard.riders.reduce(
+    (sum, rider) => sum + (Number(rider.commission || 0) || 0),
+    0,
+  );
+  adminDashboard.reports.commission = [
+    { label: "Vendor Commission Rate", value: `${vendorCommissionRate}%`, note: "Vendor payout share set by admin" },
+    { label: "Vendor Payout Total", value: formatMoney(totalVendorCommission), note: "Amount vendors receive from assigned orders" },
+    { label: "Rider Commission Rate", value: `${riderCommissionRate}%`, note: "Rider payout share set by admin" },
+    { label: "Rider Payout Total", value: formatMoney(totalRiderCommission), note: "Amount riders receive from assigned deliveries" },
+    { label: "Paid Revenue Base", value: formatMoney(paidRevenue), note: "Real paid order amount" },
+  ];
 
   return sendSuccess(res, 200, "Admin dashboard fetched", adminDashboard);
 });

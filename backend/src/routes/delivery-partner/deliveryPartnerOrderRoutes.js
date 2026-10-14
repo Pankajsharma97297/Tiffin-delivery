@@ -7,21 +7,13 @@ const {
   listDeliveryOrders,
 } = require("../../controllers/deliveryPartnerController");
 const {
-  optionalProtect,
+  protect,
   requireRoles,
 } = require("../../middleware/authMiddleware");
 
 const router = express.Router();
 
-const allowBypassOrPartner = (req, res, next) => {
-  if (!req.user) {
-    return next();
-  }
-
-  return requireRoles("rider", "vendor")(req, res, next);
-};
-
-router.use(optionalProtect, allowBypassOrPartner);
+router.use(protect, requireRoles("rider", "vendor"));
 
 router.get("/", listDeliveryOrders);
 router.get("/dashboard", getDeliveryOrderDashboard);

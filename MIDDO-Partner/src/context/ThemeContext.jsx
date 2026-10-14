@@ -1,5 +1,8 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, darkColors } from '../theme/colors';
+
+const THEME_KEY = '@middo_partner_dark_mode';
 
 function buildThemeColors(dark) {
   const src = dark ? darkColors : colors;
@@ -32,8 +35,22 @@ const ThemeContext = createContext({
 export function ThemeProvider({ children }) {
   const [darkMode, setDarkMode] = useState(false);
 
+  useEffect(() => {
+    AsyncStorage.getItem(THEME_KEY)
+      .then(value => {
+        if (value === 'true') {
+          setDarkMode(true);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
   const toggleDarkMode = useCallback(() => {
-    setDarkMode(prev => !prev);
+    setDarkMode(prev => {
+      const next = !prev;
+      AsyncStorage.setItem(THEME_KEY, String(next)).catch(() => undefined);
+      return next;
+    });
   }, []);
 
   const themeColors = buildThemeColors(darkMode);

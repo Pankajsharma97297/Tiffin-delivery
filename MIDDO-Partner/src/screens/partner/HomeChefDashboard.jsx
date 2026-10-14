@@ -30,7 +30,10 @@ export function HomeChefDashboard({
   trialOrders,
 }) {
   const { themeColors } = useTheme();
-  const usedCapacity = orders.filter(order => order.status !== 'New Order').length;
+  const usedCapacity = Math.max(
+    0,
+    Number(todayOrders || 0) - Number(completedOrders || 0),
+  );
 
   return (
     <>

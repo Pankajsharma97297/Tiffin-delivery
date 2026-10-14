@@ -30,6 +30,7 @@ const orderSchema = new mongoose.Schema(
     address: String,
     latitude: Number,
     longitude: Number,
+    planId: String,
     planType: String,
     durationDays: Number,
     mealsPerDay: Number,

@@ -1,15 +1,42 @@
+# Node modules
 node_modules/
 **/node_modules/
 
+# Android
 .gradle/
 **/.gradle/
+build/
+**/build/
+*.apk
+*.aab
 
+# Environment variables
 .env
 .env.*
 !.env.example
 
-dist/
-build/
-
+# Logs
 *.log
-*.apk
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Keystore files (✅ IMPORTANT - Security)
+*.jks
+*.keystore
+release-signing.properties
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# React Native
+**/android/app/src/main/res/drawable-*/** 
+**/android/app/src/main/res/raw/**
+**/ios/Pods/
+**/ios/build/

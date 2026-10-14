@@ -362,6 +362,7 @@ const buildAuthResponse = async (user) => {
 
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, phone, password, role = "customer" } = req.body;
+  const normalizedRole = normalizeFirebaseUserRole(role);
 
   if (!name || !email || !phone || !password) {
     return res.status(400).json({
@@ -370,7 +371,7 @@ const registerUser = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!allowedRoles.includes(role)) {
+  if (!allowedRoles.includes(normalizedRole)) {
     return res.status(400).json({
       success: false,
       message: "Invalid role selected",
@@ -387,7 +388,13 @@ const registerUser = asyncHandler(async (req, res) => {
     });
   }
 
-  const user = await User.create({ name, email, phone, password, role });
+  const user = await User.create({
+    name,
+    email,
+    phone,
+    password,
+    role: normalizedRole,
+  });
   const authData = await buildAuthResponse(user);
 
   return sendSuccess(res, 201, "User registered successfully", {
@@ -570,7 +577,16 @@ const updateCustomerLocation = asyncHandler(async (req, res) => {
 });
 
 const updateCustomerProfile = asyncHandler(async (req, res) => {
-  const { address, avatar, email, liveAddress, name, phone } = req.body;
+  const {
+    address,
+    avatar,
+    email,
+    latitude,
+    liveAddress,
+    longitude,
+    name,
+    phone,
+  } = req.body;
   const reqEmail = req.user?.email || "";
   const reqPhone = req.user?.phone || "";
 
@@ -607,6 +623,12 @@ const updateCustomerProfile = asyncHandler(async (req, res) => {
     update.liveAddress = String(liveAddress || "").trim();
     update.location = String(liveAddress || address || "").trim();
   }
+  if (latitude !== undefined && latitude !== null && latitude !== "") {
+    update.latitude = Number(latitude);
+  }
+  if (longitude !== undefined && longitude !== null && longitude !== "") {
+    update.longitude = Number(longitude);
+  }
   const locationLabel = update.liveAddress || update.address || "";
 
   if (locationLabel) {
@@ -615,6 +637,8 @@ const updateCustomerProfile = asyncHandler(async (req, res) => {
         label: "Home",
         address: update.address || locationLabel,
         liveAddress: update.liveAddress || locationLabel,
+        latitude: update.latitude,
+        longitude: update.longitude,
         isDefault: true,
       },
     ];

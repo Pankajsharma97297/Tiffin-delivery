@@ -45,6 +45,7 @@ const customerSchema = new mongoose.Schema(
     activeSubscription: {
       subscriptionId: String,
       orderId: String,
+      planId: String,
       plan: String,
       planType: String,
       status: String,

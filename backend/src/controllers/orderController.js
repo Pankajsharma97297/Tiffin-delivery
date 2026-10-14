@@ -10,6 +10,7 @@ const {
   syncCustomerActiveSubscription,
 } = require("../utils/customerSubscription");
 const {
+  notifyOrderStatusChange,
   notifyRiderNewAssignment,
   notifyVendorNewOrder,
 } = require("../utils/partnerNotifications");
@@ -164,6 +165,33 @@ const expireElapsedSubscriptions = () =>
     { status: "Active", endDate: { $lte: new Date() } },
     { $set: { status: "Expired" } },
   );
+
+const sendAssignmentError = (res, error, label) => {
+  const statusCode =
+    error.statusCode ||
+    (error.name === "ValidationError" || error.name === "CastError" ? 400 : 409);
+  const message =
+    error.name === "ValidationError"
+      ? Object.values(error.errors || {})
+          .map((item) => item.message)
+          .filter(Boolean)
+          .join(", ") || error.message
+      : error.name === "CastError"
+        ? `Invalid ${error.path || "id"} value`
+        : error.message || `${label} failed`;
+
+  console.error("[order-assignment]", {
+    label,
+    message,
+    stack: error.stack,
+    statusCode,
+  });
+
+  return res.status(statusCode).json({
+    success: false,
+    message,
+  });
+};
 
 const getOrders = asyncHandler(async (req, res) => {
   const orders = await Order.find(buildOrderLookupFromUser(req.user))
@@ -463,10 +491,15 @@ const updateOrderStatus = asyncHandler(async (req, res) => {
     });
   }
 
+  notifyOrderStatusChange(order, status).catch((error) => {
+    console.warn("[order-status] Push notification error:", error?.message);
+  });
+
   return sendSuccess(res, 200, "Order tracking status updated", { order });
 });
 
 const assignVendorToOrder = asyncHandler(async (req, res) => {
+  try {
   const {
     chef,
     homeChefId,
@@ -478,6 +511,36 @@ const assignVendorToOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: "Vendor identity is required",
+    });
+  }
+
+  const existingOrder = await Order.findOne({ orderId: req.params.orderId }).lean();
+
+  if (!existingOrder) {
+    return res.status(404).json({
+      success: false,
+      message: "Order not found",
+    });
+  }
+
+  if (existingOrder.status === "Delivered") {
+    return res.status(409).json({
+      success: false,
+      message: "Delivered order cannot be reassigned.",
+    });
+  }
+
+  const hasVendorAssignment = Boolean(
+    existingOrder.homeChefId ||
+      existingOrder.homeChefName ||
+      existingOrder.homeChefOwner ||
+      existingOrder.chef,
+  );
+
+  if (hasVendorAssignment) {
+    return res.status(409).json({
+      success: false,
+      message: "Vendor already assigned to this order.",
     });
   }
 
@@ -498,6 +561,20 @@ const assignVendorToOrder = asyncHandler(async (req, res) => {
     ? await User.findOne({ role: "vendor", $or: vendorFilters }).lean()
     : null;
 
+  if (!vendor) {
+    return res.status(404).json({
+      success: false,
+      message: "Vendor not found. Select an approved online kitchen.",
+    });
+  }
+
+  if (vendor.partnerProfile?.kycStatus !== "Approved") {
+    return res.status(409).json({
+      success: false,
+      message: "Vendor approval is required before assigning orders.",
+    });
+  }
+
   if (vendor && vendor.partnerProfile?.kitchenOpen === false) {
     return res.status(409).json({
       success: false,
@@ -509,9 +586,14 @@ const assignVendorToOrder = asyncHandler(async (req, res) => {
     { orderId: req.params.orderId },
     {
       ...(chef || homeChefName ? { chef: chef || homeChefName } : {}),
-      ...(homeChefId ? { homeChefId } : {}),
-      ...(homeChefName || chef ? { homeChefName: homeChefName || chef } : {}),
-      ...(homeChefOwner ? { homeChefOwner } : {}),
+      homeChefId: String(vendor._id),
+      homeChefName:
+        vendor.partnerProfile?.kitchenName ||
+        vendor.partnerProfile?.name ||
+        vendor.name ||
+        homeChefName ||
+        chef,
+      homeChefOwner: String(vendor._id),
       status: "Order Confirmed",
     },
     { returnDocument: "after", runValidators: true },
@@ -524,16 +606,27 @@ const assignVendorToOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  const notificationResult = await notifyVendorNewOrder(order);
+  const notificationResult = await notifyVendorNewOrder(order).catch((error) => {
+    console.warn("[order-assignment] Vendor notification failed", {
+      message: error?.message,
+      orderId: order.orderId,
+    });
+    return { notification: null, pushed: false, error: error?.message };
+  });
 
   return sendSuccess(res, 200, "Vendor assigned to order", {
     notification: notificationResult?.notification,
     notificationPushed: Boolean(notificationResult?.pushed),
+    notificationReason: notificationResult?.reason || notificationResult?.error || "",
     order,
   });
+  } catch (error) {
+    return sendAssignmentError(res, error, "Vendor assignment");
+  }
 });
 
 const assignRiderToOrder = asyncHandler(async (req, res) => {
+  try {
   const {
     deliveryBatchId,
     deliverySequence,
@@ -563,6 +656,39 @@ const assignRiderToOrder = asyncHandler(async (req, res) => {
     });
   }
 
+  const existingOrder = await Order.findOne({ orderId: req.params.orderId }).lean();
+
+  if (!existingOrder) {
+    return res.status(404).json({
+      success: false,
+      message: "Order not found",
+    });
+  }
+
+  if (existingOrder.status === "Delivered") {
+    return res.status(409).json({
+      success: false,
+      message: "Delivered order cannot be reassigned.",
+    });
+  }
+
+  const hasRiderAssignment = Boolean(
+    existingOrder.riderId ||
+      existingOrder.riderName ||
+      existingOrder.riderEmail ||
+      existingOrder.riderPhone ||
+      existingOrder.deliveryPartnerName ||
+      existingOrder.deliveryPartnerEmail ||
+      existingOrder.deliveryPartnerPhone,
+  );
+
+  if (hasRiderAssignment) {
+    return res.status(409).json({
+      success: false,
+      message: "Rider already assigned to this order.",
+    });
+  }
+
   const rider = riderFilters.length
     ? await User.findOne({ role: "rider", $or: riderFilters }).lean()
     : null;
@@ -571,6 +697,13 @@ const assignRiderToOrder = asyncHandler(async (req, res) => {
     return res.status(404).json({
       success: false,
       message: "Rider not found",
+    });
+  }
+
+  if (rider && !rider.isActive) {
+    return res.status(409).json({
+      success: false,
+      message: "Delivery partner account is inactive. Order cannot be assigned.",
     });
   }
 
@@ -602,13 +735,24 @@ const assignRiderToOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  const notificationResult = await notifyRiderNewAssignment(order);
+  const notificationResult = await notifyRiderNewAssignment(order).catch((error) => {
+    console.warn("[order-assignment] Rider notification failed", {
+      message: error?.message,
+      orderId: order.orderId,
+      riderId: order.riderId,
+    });
+    return { notification: null, pushed: false, error: error?.message };
+  });
 
   return sendSuccess(res, 200, "Rider assigned to order", {
     notification: notificationResult?.notification,
     notificationPushed: Boolean(notificationResult?.pushed),
+    notificationReason: notificationResult?.reason || notificationResult?.error || "",
     order,
   });
+  } catch (error) {
+    return sendAssignmentError(res, error, "Rider assignment");
+  }
 });
 
 module.exports = {

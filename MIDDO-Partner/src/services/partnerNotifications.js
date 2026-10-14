@@ -1,9 +1,11 @@
-import { Alert, PermissionsAndroid, Platform } from 'react-native';
+import { PermissionsAndroid, Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { partnerRequest } from './partnerSession';
+import { getNativeModule } from './nativeModules';
 
 const PREFS_KEY = '@partner_push_prefs';
+const partnerNotification = getNativeModule('PartnerNotification');
 
 // Default preferences
 const DEFAULT_PREFS = {
@@ -16,7 +18,6 @@ const DEFAULT_PREFS = {
 const ORDER_ALERT_TYPES = new Set([
   'vendor_order_assigned',
   'rider_order_assigned',
-  'partner_test_push',
   'order_assigned',
   'order_accepted',
   'order_status_update',
@@ -87,9 +88,15 @@ async function shouldShowAlert(remoteMessage = {}) {
 }
 
 function showForegroundAlert(remoteMessage = {}) {
-  const title = remoteMessage.notification?.title || 'New notification';
-  const body = remoteMessage.notification?.body || 'You have a new update.';
-  Alert.alert(title, body);
+  const title = remoteMessage.notification?.title || remoteMessage.data?.title;
+  const body = remoteMessage.notification?.body || remoteMessage.data?.body;
+  partnerNotification?.show?.(
+    title || 'MIDDO Partner',
+    body || 'You have a new update.',
+  );
+  if (__DEV__) {
+    console.log('[partner-notification] Foreground message received:', { title, body });
+  }
 }
 
 async function requestAndroidNotificationPermission() {
@@ -134,6 +141,12 @@ export async function registerPartnerPushNotifications() {
   await partnerRequest('/api/delivery-partner/profile/notifications/register-device', {
     method: 'POST',
     body: { pushToken },
+  }).catch(error => {
+    throw new Error(
+      error instanceof Error
+        ? `Push token register failed: ${error.message}`
+        : 'Push token register failed',
+    );
   });
 
   return pushToken;

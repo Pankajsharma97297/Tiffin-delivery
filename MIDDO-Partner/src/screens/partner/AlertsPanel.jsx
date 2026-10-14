@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Image, Pressable, Text, View, StyleSheet } from 'react-native';
 import { Icons } from '../../theme/images';
 import { colors } from '../../theme/colors';
-import { fetchPartnerNotifications } from '../../services/partnerApi';
+import { clearPartnerNotifications, fetchPartnerNotifications } from '../../services/partnerApi';
 import { useTheme } from '../../context/ThemeContext';
 
 const tabs = ['All', 'Orders', 'Payments', 'Alerts'];
@@ -32,7 +32,7 @@ function mapLocalAlert(msg, index) {
   };
 }
 
-export function AlertsPanel({ localAlerts = [], onBack, refreshKey = 0, topInset = 0 }) {
+export function AlertsPanel({ localAlerts = [], onBack, onClearLocalAlerts, refreshKey = 0, topInset = 0 }) {
   const { darkMode, themeColors } = useTheme();
   const [activeTab, setActiveTab] = useState(0);
   const [backendRows, setBackendRows] = useState([]);
@@ -51,6 +51,19 @@ export function AlertsPanel({ localAlerts = [], onBack, refreshKey = 0, topInset
         setLoading(false);
       });
   }, []);
+
+  const clearAllNotifications = useCallback(() => {
+    setLoading(true);
+    clearPartnerNotifications()
+      .catch(() => 0)
+      .then(() => {
+        setBackendRows([]);
+        onClearLocalAlerts?.();
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+  }, [onClearLocalAlerts]);
 
   useEffect(() => {
     loadNotifications();
@@ -177,10 +190,10 @@ export function AlertsPanel({ localAlerts = [], onBack, refreshKey = 0, topInset
       })}
 
       {rows.length > 0 ? (
-        <View style={styles.clearAll}>
+        <Pressable onPress={clearAllNotifications} style={styles.clearAll}>
           <Image source={Icons.Delete} style={[styles.clearIcon, { tintColor: themeColors.muted }]} />
           <Text style={[styles.clearText, { color: themeColors.muted }]}>Clear all notifications</Text>
-        </View>
+        </Pressable>
       ) : null}
     </>
   );

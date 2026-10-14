@@ -11,7 +11,7 @@ export function PartnerShell({ activeTab, bottomInset, children, deliveryMode, f
   const deliverySurface = deliveryMode && (activeTab === 'deliveries' || activeTab === 'earnings');
 
   return (
-    <View style={styles.shell}>
+    <View style={[styles.shell, { backgroundColor: themeColors.surface }]}>
       {activeTab === 'home' || activeTab === 'earnings' || activeTab === 'alerts' ? null : (
         <AppTopBar
           Righticon={activeTab === 'profile' ? Icons.Edit : deliverySurface ? Icons.Filter : null}
@@ -25,11 +25,14 @@ export function PartnerShell({ activeTab, bottomInset, children, deliveryMode, f
       )}
       {fixedHeader ? <View style={styles.fixedHeader}>{fixedHeader}</View> : null}
       {activeTab === 'profile' ? (
-        <View style={styles.profileContent}>
+        <View style={[styles.profileContent, { backgroundColor: themeColors.surface }]}>
           {children}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={[styles.appContent, { paddingBottom: Math.max(106, bottomInset + 88) }]} showsVerticalScrollIndicator>
+        <ScrollView
+          contentContainerStyle={[styles.appContent, { paddingBottom: Math.max(106, bottomInset + 88) }]}
+          style={{ backgroundColor: themeColors.surface }}
+          showsVerticalScrollIndicator>
           {children}
         </ScrollView>
       )}

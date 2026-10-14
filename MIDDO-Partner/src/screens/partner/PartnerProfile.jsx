@@ -5,6 +5,7 @@ import {
   fetchHomeChefPhotos,
   updateHomeChefMenu,
   updateHomeChefPhotos,
+  updatePartnerKycDocuments,
   updatePartnerProfile,
   uploadPartnerProfileImage,
 } from '../../services/partnerProfileApi';
@@ -30,6 +31,20 @@ const foodCategories = [
   'Street Food',
 ];
 const kitchenMealSlots = ['Breakfast', 'Lunch', 'Snacks', 'Dinner'];
+const vendorKycDocuments = [
+  ['profilePhoto', 'Profile Photo'],
+  ['idProof', 'Aadhaar / PAN / ID Proof'],
+  ['fssaiLicense', 'FSSAI License Photo'],
+  ['kitchenPhoto', 'Kitchen Photo'],
+  ['bankProof', 'Bank / UPI Proof'],
+];
+const riderKycDocuments = [
+  ['profilePhoto', 'Profile Photo'],
+  ['idProof', 'Aadhaar / PAN / ID Proof'],
+  ['drivingLicense', 'Driving License'],
+  ['vehiclePhoto', 'Vehicle Photo'],
+  ['bankProof', 'Bank / UPI Proof'],
+];
 
 function Field({ editable = true, keyboardType, label, onChangeText, value }) {
   const { darkMode, themeColors } = useTheme();
@@ -166,6 +181,8 @@ export const PartnerProfile = forwardRef(function PartnerProfile(
   const [isPhotoUploading, setIsPhotoUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [kycUploadingKey, setKycUploadingKey] = useState('');
+  const [isKycSaving, setIsKycSaving] = useState(false);
   const [menuEditorTarget, setMenuEditorTarget] = useState(null);
   const [uploadingMenuPhotoKey, setUploadingMenuPhotoKey] = useState('');
   const [menuForm, setMenuForm] = useState({ sampleMenu: [], weeklyMenu: [] });
@@ -175,6 +192,9 @@ export const PartnerProfile = forwardRef(function PartnerProfile(
   const displayName = form.name || form.email || form.phone || (isDeliveryPartner ? 'Delivery Partner' : 'HomeChef');
   const initial = displayName.trim().charAt(0).toUpperCase();
   const avatarUri = getAvatarPreviewUri(form.avatar);
+  const kycDocumentTypes = isDeliveryPartner ? riderKycDocuments : vendorKycDocuments;
+  const kycDocuments = Array.isArray(form.kycDocuments) ? form.kycDocuments : [];
+  const kycStatus = form.kycStatus || 'Not Submitted';
   const activeMealSlotOptions = useMemo(
     () => (Array.isArray(form.mealSlots) ? form.mealSlots : [])
       .filter(slot => kitchenMealSlots.includes(slot)),
@@ -676,6 +696,94 @@ export const PartnerProfile = forwardRef(function PartnerProfile(
     }
   };
 
+  const chooseKycDocument = async (key, label) => {
+    if (!isEditingDetails || kycUploadingKey || isKycSaving) {
+      return;
+    }
+
+    setKycUploadingKey(key);
+    try {
+      if (!profileImagePicker?.pickImage) {
+        Alert.alert('KYC upload', 'Photo picker is not available in this build.');
+        return;
+      }
+
+      const asset = await profileImagePicker.pickImage();
+      if (!asset?.uri) {
+        Alert.alert('KYC upload', 'Selected image path was not received.');
+        return;
+      }
+
+      const uploadedUrl = await uploadPartnerProfileImage({
+        fileName: asset.fileName || `${key}-document`,
+        mimeType: asset.mimeType || 'image/jpeg',
+        uri: asset.uri,
+      });
+      setForm(current => {
+        const currentDocuments = Array.isArray(current.kycDocuments) ? current.kycDocuments : [];
+        const nextDocument = {
+          key,
+          label,
+          url: uploadedUrl,
+          uploadedAt: new Date().toISOString(),
+        };
+        return {
+          ...current,
+          kycDocuments: [
+            ...currentDocuments.filter(document => document.key !== key),
+            nextDocument,
+          ],
+          kycStatus: 'Draft',
+        };
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Please try again.';
+      Alert.alert(
+        'KYC upload failed',
+        message.includes('cancelled') || message.includes('PICKER_CANCELLED')
+          ? 'Image selection cancelled.'
+          : message,
+      );
+    } finally {
+      setKycUploadingKey('');
+    }
+  };
+
+  const submitKycDocuments = async () => {
+    if (!isEditingDetails || isKycSaving) {
+      return;
+    }
+
+    const requiredKeys = kycDocumentTypes.map(([key]) => key);
+    const uploadedKeys = new Set(kycDocuments.map(document => document.key));
+    const missingLabels = kycDocumentTypes
+      .filter(([key]) => !uploadedKeys.has(key))
+      .map(([, label]) => label);
+
+    if (missingLabels.length) {
+      Alert.alert('KYC incomplete', `Please upload: ${missingLabels.join(', ')}`);
+      return;
+    }
+
+    setIsKycSaving(true);
+    try {
+      const submittedDocuments = kycDocuments.filter(document => requiredKeys.includes(document.key));
+      const updatedProfile = await updatePartnerKycDocuments(submittedDocuments);
+      setForm(updatedProfile);
+      onProfileChange?.(updatedProfile);
+      onDataChange?.();
+      setIsEditingDetails(false);
+      Alert.alert('KYC submitted', 'Your documents were sent for admin verification.');
+    } catch (error) {
+      Alert.alert(
+        'KYC submit failed',
+        error instanceof Error ? error.message : 'Please try again.',
+      );
+    } finally {
+      setIsKycSaving(false);
+    }
+  };
+
   const renderPersonal = () => (
     <>
       {personalFields.map(([key, label]) => (
@@ -869,11 +977,67 @@ export const PartnerProfile = forwardRef(function PartnerProfile(
   );
 
   const renderDocuments = () => (
-    <EmptyState
-      copy="Document verification statuses will appear here when backend KYC data is available."
-      icon={Icons.Document}
-      title="No live documents yet."
-    />
+    <View style={[styles.documentPanel, darkMode ? { backgroundColor: '#1e1c1b', borderColor: '#2e2724' } : null]}>
+      <View style={styles.documentHeader}>
+        <View style={styles.documentHeaderCopy}>
+          <Text style={[styles.groupTitle, { color: themeColors.ink }]}>KYC Verification</Text>
+          <Text style={[styles.documentHelp, { color: themeColors.muted }]}>
+            Upload clear photos. Admin will approve or reject after review.
+          </Text>
+        </View>
+        <Text style={[
+          styles.kycStatus,
+          kycStatus === 'Approved'
+            ? styles.kycStatusApproved
+            : kycStatus === 'Rejected'
+              ? styles.kycStatusRejected
+              : styles.kycStatusPending,
+        ]}>
+          {kycStatus}
+        </Text>
+      </View>
+
+      {form.kycReviewNote ? (
+        <Text style={styles.kycNote}>Admin note: {form.kycReviewNote}</Text>
+      ) : null}
+
+      {kycDocumentTypes.map(([key, label]) => {
+        const document = kycDocuments.find(item => item.key === key);
+        const previewUri = getAvatarPreviewUri(document?.url);
+        const isUploading = kycUploadingKey === key;
+
+        return (
+          <View key={key} style={[styles.documentRow, darkMode ? { borderColor: '#2e2724' } : null]}>
+            {previewUri ? (
+              <Image source={{ uri: previewUri }} style={styles.documentPreview} />
+            ) : (
+              <View style={[styles.documentPlaceholder, darkMode ? { backgroundColor: '#2a1a10', borderColor: '#3a2010' } : null]}>
+                <Image source={Icons.Document} style={styles.documentIcon} />
+              </View>
+            )}
+            <View style={styles.documentCopy}>
+              <Text style={[styles.documentTitle, { color: themeColors.ink }]}>{label}</Text>
+              <Text style={[styles.documentMeta, { color: themeColors.muted }]}>
+                {document?.url ? 'Uploaded' : 'Required'}
+              </Text>
+            </View>
+            <Pressable
+              disabled={!isEditingDetails || isUploading || isKycSaving}
+              onPress={() => chooseKycDocument(key, label)}
+              style={[styles.documentButton, !isEditingDetails || isUploading || isKycSaving ? styles.disabledButton : null]}
+            >
+              <Text style={styles.documentButtonText}>
+                {isUploading ? 'Uploading...' : document?.url ? 'Change' : 'Upload'}
+              </Text>
+            </Pressable>
+          </View>
+        );
+      })}
+
+      <Pressable disabled={!isEditingDetails || isKycSaving} onPress={submitKycDocuments} style={[styles.saveButton, !isEditingDetails || isKycSaving ? styles.disabledButton : null]}>
+        <Text style={styles.saveButtonText}>{isKycSaving ? 'Submitting...' : 'Submit KYC for Review'}</Text>
+      </Pressable>
+    </View>
   );
 
   const renderMenuRows = (menuType, rows) => (
@@ -1255,6 +1419,90 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
+  documentButton: {
+    alignItems: 'center',
+    backgroundColor: '#fff7f1',
+    borderColor: colors.orange,
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  documentButtonText: {
+    color: colors.orange,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  documentCopy: {
+    flex: 1,
+  },
+  documentHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  documentHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  documentHelp: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17,
+  },
+  documentIcon: {
+    height: 20,
+    tintColor: colors.orange,
+    width: 20,
+  },
+  documentMeta: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 3,
+  },
+  documentPanel: {
+    backgroundColor: colors.white,
+    borderColor: '#eadfd7',
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  documentPlaceholder: {
+    alignItems: 'center',
+    backgroundColor: '#fff4ee',
+    borderColor: '#ffd0bd',
+    borderRadius: 10,
+    borderWidth: 1,
+    height: 48,
+    justifyContent: 'center',
+    width: 48,
+  },
+  documentPreview: {
+    backgroundColor: '#fff4ee',
+    borderRadius: 10,
+    height: 48,
+    width: 48,
+  },
+  documentRow: {
+    alignItems: 'center',
+    borderColor: '#f0e5dd',
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 10,
+    padding: 10,
+  },
+  documentTitle: {
+    color: colors.ink,
+    fontSize: 13,
+    fontWeight: '900',
+  },
   editorCard: {
     backgroundColor: colors.white,
     borderColor: '#eadfd7',
@@ -1339,6 +1587,39 @@ const styles = StyleSheet.create({
   },
   kitchenSection: {
     marginBottom: 18,
+  },
+  kycNote: {
+    backgroundColor: '#fff7f1',
+    borderRadius: 10,
+    color: '#9a3412',
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 17,
+    marginBottom: 12,
+    padding: 10,
+  },
+  kycStatus: {
+    alignSelf: 'flex-start',
+    borderRadius: 999,
+    fontSize: 11,
+    fontWeight: '900',
+    maxWidth: 112,
+    overflow: 'hidden',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    textAlign: 'center',
+  },
+  kycStatusApproved: {
+    backgroundColor: '#dcfce7',
+    color: '#166534',
+  },
+  kycStatusPending: {
+    backgroundColor: '#ffedd5',
+    color: '#9a3412',
+  },
+  kycStatusRejected: {
+    backgroundColor: '#fee2e2',
+    color: '#991b1b',
   },
   locationButton: {
     alignItems: 'center',

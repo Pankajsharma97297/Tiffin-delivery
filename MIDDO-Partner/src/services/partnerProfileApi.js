@@ -40,6 +40,18 @@ export async function updatePartnerProfile(profile) {
   return updatedProfile;
 }
 
+export async function updatePartnerKycDocuments(documents) {
+  const payload = await partnerRequest('/api/delivery-partner/profile/kyc', {
+    method: 'PATCH',
+    body: {
+      documents: Array.isArray(documents) ? documents : [],
+    },
+  });
+  const updatedProfile = payload.profile || payload.data?.profile || {};
+  await syncPartnerSession(updatedProfile, payload.user || payload.data?.user);
+  return updatedProfile;
+}
+
 export async function updatePartnerAvailability({ isOnline, kitchenOpen, role } = {}) {
   const body = { role };
   if (typeof isOnline === 'boolean') {

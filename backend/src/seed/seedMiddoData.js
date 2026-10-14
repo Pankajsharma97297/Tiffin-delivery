@@ -687,6 +687,7 @@ const seedData = {
   plans: [
     {
       name: "7 Days Plan",
+      durationDays: 7,
       meals: "7 days · 7 meals",
       price: "₹499",
       users: 842,
@@ -694,6 +695,7 @@ const seedData = {
     },
     {
       name: "15 Days Plan",
+      durationDays: 15,
       meals: "15 days · 15 meals",
       price: "₹999",
       users: 934,
@@ -701,6 +703,7 @@ const seedData = {
     },
     {
       name: "30 Days Plan",
+      durationDays: 30,
       meals: "30 days · 30 meals",
       price: "₹1,899",
       users: 1388,

@@ -16,6 +16,8 @@ const subscriptionRequestSchema = new mongoose.Schema(
     reason: String,
     currentAddress: String,
     newAddress: String,
+    newLatitude: Number,
+    newLongitude: Number,
     status: { type: String, default: "Pending Admin Approval" },
     note: String,
   },

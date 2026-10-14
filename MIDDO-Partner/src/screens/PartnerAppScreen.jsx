@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Alert, Linking, View, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../context/ThemeContext';
 import {
   homeChefStatusFlow,
   riderStatusFlow,
 } from '../data/partnerData';
 import { DashboardHero, DeliveryDashboardHero, PartnerShell } from '../components/partner';
-import { fetchHomeChefDashboard, fetchPartnerOrders, updatePartnerOrderStatus, updatePartnerRole } from '../services/partnerApi';
+import { fetchPartnerDashboard, fetchPartnerOrders, updatePartnerOrderStatus, updatePartnerRole } from '../services/partnerApi';
 import {
   confirmPartnerPhoneOtp,
   getPartnerAuthErrorMessage,
@@ -44,6 +45,7 @@ import {
 } from './partner';
 
 const profileImagePicker = getNativeModule('ProfileImagePicker');
+const RIDER_HISTORY_KEY = '@middo_partner_rider_delivery_history';
 const getPartnerRoleFromSession = sessionRole =>
   /rider|delivery/i.test(String(sessionRole || '')) ? 'rider' : 'homechef';
 
@@ -74,6 +76,7 @@ const shouldShowPartnerSetup = session => {
 export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
   const { themeColors } = useTheme();
   const profileEditorRef = useRef(null);
+  const signingOutRef = useRef(false);
   const [stage, setStage] = useState('restoring');
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [selectedRole, setSelectedRole] = useState('homechef');
@@ -99,13 +102,30 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
     earnings: 0,
     mealSlots: [],
     pendingOrders: 0,
+    remainingCapacity: 150,
     subscriptionOrders: 0,
     todayOrders: 0,
     trialOrders: 0,
+    pendingPayout: 0,
+    settled: 0,
+    totalEarned: 0,
+    commissionPercent: 0,
+    payoutHistory: [],
+  });
+  const [riderDashboard, setRiderDashboard] = useState({
+    completedOrders: 0,
+    earnings: 0,
+    pendingOrders: 0,
+    pendingPayout: 0,
+    settled: 0,
+    totalEarned: 0,
+    commissionPercent: 0,
+    payoutHistory: [],
   });
   const [riderDeliveries, setRiderDeliveries] = useState([]);
   // Persisted history of delivered orders — survives refresh and status-advance
   const [riderDeliveryHistory, setRiderDeliveryHistory] = useState([]);
+  const [riderHistoryLoaded, setRiderHistoryLoaded] = useState(false);
   // Accumulated in-app FCM push messages for the Alerts tab
   const [localAlerts, setLocalAlerts] = useState([]);
   const [profileForm, setProfileForm] = useState({
@@ -119,15 +139,11 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
 
   const completedHomeChefOrders = Number(homeChefDashboard.completedOrders || 0);
   const pendingHomeChefOrders = Number(homeChefDashboard.pendingOrders || 0);
-  const homeChefEarnings = Number(homeChefDashboard.earnings || 0);
-  const acceptedHomeChefOrders = homeChefOrders.filter(order => order.status !== 'New Order').length;
-  const homeChefCapacityReached = acceptedHomeChefOrders >= Math.max(1, Number(dailyCapacity || 0));
+  const homeChefEarnings = Number(homeChefDashboard.totalEarned || homeChefDashboard.earnings || 0);
+  const homeChefCapacityReached = Boolean(homeChefDashboard.capacityReached);
   const completedDeliveries = riderDeliveries.filter(delivery => delivery.status === 'Delivered').length + riderDeliveryHistory.length;
   const pendingDeliveries = riderDeliveries.filter(delivery => delivery.status !== 'Delivered').length;
-  // Earnings = active orders + persisted history (ensures earnings survive after delivery completes)
-  const riderEarnings =
-    riderDeliveries.reduce((sum, delivery) => sum + delivery.amount, 0) +
-    riderDeliveryHistory.reduce((sum, delivery) => sum + delivery.amount, 0);
+  const riderEarnings = Number(riderDashboard.totalEarned || riderDashboard.earnings || 0);
   const tabs = selectedRole === 'homechef'
     ? ['home', 'orders', 'earnings', 'alerts', 'profile']
     : ['home', 'deliveries', 'earnings', 'alerts', 'profile'];
@@ -136,12 +152,14 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
 
   const refreshPartnerOrders = useCallback(async role => {
     try {
-      const [orders, dashboard] = role === 'rider'
-        ? [await fetchPartnerOrders(role), null]
-        : await Promise.all([fetchPartnerOrders(role), fetchHomeChefDashboard()]);
+      const [orders, dashboard] = await Promise.all([
+        fetchPartnerOrders(role),
+        fetchPartnerDashboard(),
+      ]);
       if (role === 'rider') {
+        setRiderDashboard(current => ({ ...current, ...dashboard }));
         // Merge: keep local delivered history, update active orders from backend
-        setRiderDeliveries(orders);
+        setRiderDeliveries(orders.filter(o => o.status !== 'Delivered'));
         // If backend returns some delivered orders, merge into history too
         const backendDelivered = orders.filter(o => o.status === 'Delivered');
         if (backendDelivered.length > 0) {
@@ -159,6 +177,9 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
         }
       }
     } catch (error) {
+      if (signingOutRef.current) {
+        return;
+      }
       Alert.alert('Partner Sync', error.message || 'Unable to sync partner orders');
     }
   }, []);
@@ -263,6 +284,48 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
       mounted = false;
     };
   }, [applyPartnerSessionToProfile, refreshPartnerOrders, refreshPartnerProfile]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    AsyncStorage.getItem(RIDER_HISTORY_KEY)
+      .then(rawHistory => {
+        if (!mounted || !rawHistory) {
+          return;
+        }
+
+        const parsedHistory = JSON.parse(rawHistory);
+        if (Array.isArray(parsedHistory)) {
+          setRiderDeliveryHistory(prev => {
+            const existingIds = new Set(prev.map(delivery => delivery.id));
+            const savedOnly = parsedHistory.filter(delivery => !existingIds.has(delivery.id));
+            return savedOnly.length > 0 ? [...prev, ...savedOnly] : prev;
+          });
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) {
+          setRiderHistoryLoaded(true);
+        }
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!riderHistoryLoaded) {
+      return;
+    }
+
+    AsyncStorage.setItem(
+      RIDER_HISTORY_KEY,
+      JSON.stringify(riderDeliveryHistory.slice(-100)),
+    ).catch(() => undefined);
+  }, [riderDeliveryHistory, riderHistoryLoaded]);
+
   useEffect(() => {
     if (stage === 'app' && activeTab === 'home') {
       refreshCurrentPartnerData();
@@ -286,7 +349,12 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
       return undefined;
     }
 
-    registerPartnerPushNotifications().catch(() => undefined);
+    registerPartnerPushNotifications().catch(error => {
+      console.warn(
+        '[partner-push] Registration failed',
+        error instanceof Error ? error.message : error,
+      );
+    });
 
     // onAnyAlert: captures every FCM message into local alerts state for the Alerts tab
     const onAnyAlert = remoteMessage => {
@@ -417,12 +485,16 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
       });
     }
 
-    setRiderDeliveries(current =>
-      current.map(item => {
+    setRiderDeliveries(current => {
+      if (isBecomingDelivered) {
+        return current.filter(item => item.id !== deliveryId);
+      }
+
+      return current.map(item => {
         const followingStatus = riderStatusFlow[item.status];
         return item.id === deliveryId && followingStatus ? { ...item, status: followingStatus } : item;
-      }),
-    );
+      });
+    });
 
     try {
       await updatePartnerOrderStatus(deliveryId, nextStatus);
@@ -489,6 +561,7 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
     try {
       const result = await signInPartnerWithGoogle(backendRole);
       if (result.type === 'success') {
+        signingOutRef.current = false;
         applyPartnerSessionToProfile(result.session);
         const restoredRole = getPartnerRoleFromSession(
           result.session?.profile?.role || result.session?.user?.role,
@@ -523,6 +596,7 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
     setVerifyingOtp(true);
     try {
       const session = await confirmPartnerPhoneOtp(authConfirmation, otp, backendRole);
+      signingOutRef.current = false;
       applyPartnerSessionToProfile(session);
       const restoredRole = getPartnerRoleFromSession(
         session?.profile?.role || session?.user?.role,
@@ -618,6 +692,7 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
   };
 
   const signOut = async () => {
+    signingOutRef.current = true;
     await Promise.allSettled([
       clearPartnerSession(),
       signOutPartnerFromGoogle(),
@@ -790,9 +865,24 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
               onAdvanceStatus={updateHomeChefOrderStatus}
             />
           ) : activeTab === 'earnings' ? (
-            <EarningsPanel onBack={leaveAppScreen} role="HomeChef" topInset={topInset} total={homeChefEarnings} />
+            <EarningsPanel
+              onBack={leaveAppScreen}
+              role="HomeChef"
+              topInset={topInset}
+              total={homeChefEarnings}
+              pendingPayout={homeChefDashboard.pendingPayout}
+              settled={homeChefDashboard.settled}
+              commissionPercent={homeChefDashboard.commissionPercent}
+              history={homeChefDashboard.payoutHistory}
+            />
           ) : activeTab === 'alerts' ? (
-            <AlertsPanel localAlerts={localAlerts} onBack={leaveAppScreen} refreshKey={alertsRefreshKey} topInset={topInset} />
+            <AlertsPanel
+              localAlerts={localAlerts}
+              onBack={leaveAppScreen}
+              onClearLocalAlerts={() => setLocalAlerts([])}
+              refreshKey={alertsRefreshKey}
+              topInset={topInset}
+            />
           ) : activeTab === 'settings' ? (
             <SettingsPanel onSignOut={signOut} profile={profileForm} role="HomeChef" />
           ) : (
@@ -858,7 +948,13 @@ export function PartnerAppScreen({ topInset, bottomInset, onBack }) {
         ) : activeTab === 'earnings' ? (
           <EarningsPanel onBack={leaveAppScreen} role="Delivery Partner" topInset={topInset} total={riderEarnings} />
         ) : activeTab === 'alerts' ? (
-          <AlertsPanel localAlerts={localAlerts} onBack={leaveAppScreen} refreshKey={alertsRefreshKey} topInset={topInset} />
+          <AlertsPanel
+            localAlerts={localAlerts}
+            onBack={leaveAppScreen}
+            onClearLocalAlerts={() => setLocalAlerts([])}
+            refreshKey={alertsRefreshKey}
+            topInset={topInset}
+          />
         ) : activeTab === 'settings' ? (
           <SettingsPanel onSignOut={signOut} profile={profileForm} role="Delivery Partner" />
         ) : (

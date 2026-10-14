@@ -5,6 +5,7 @@ const subscriptionSchema = new mongoose.Schema(
     customer: String,
     customerEmail: String,
     customerPhone: String,
+    planId: String,
     plan: String,
     planType: String,
     durationDays: Number,

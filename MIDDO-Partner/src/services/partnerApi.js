@@ -68,14 +68,25 @@ export async function fetchPartnerOrders(role) {
     : orders.map(mapOrderToHomeChefOrder);
 }
 
-export async function fetchHomeChefDashboard() {
+export async function fetchPartnerDashboard() {
   const payload = await partnerRequest('/api/delivery-partner/orders/dashboard');
   return payload.dashboard || payload.data?.dashboard || {};
+}
+
+export async function fetchHomeChefDashboard() {
+  return fetchPartnerDashboard();
 }
 
 export async function fetchPartnerNotifications() {
   const payload = await partnerRequest('/api/delivery-partner/profile/notifications');
   return payload.notifications || [];
+}
+
+export async function clearPartnerNotifications() {
+  const payload = await partnerRequest('/api/delivery-partner/profile/notifications', {
+    method: 'DELETE',
+  });
+  return payload.deletedCount || 0;
 }
 
 export async function updatePartnerOrderStatus(orderId, status) {

@@ -2,7 +2,9 @@ const jwt = require("jsonwebtoken");
 
 const Category = require("../models/Category");
 const HomeChef = require("../models/HomeChef");
+const Order = require("../models/Order");
 const Product = require("../models/Product");
+const Review = require("../models/Review");
 const Subscription = require("../models/Subscription");
 const SuperAdmin = require("../models/SuperAdmin");
 const User = require("../models/User");
@@ -17,6 +19,15 @@ const {
 const protectedFields = ["_id", "__v", "createdAt", "updatedAt"];
 const userRoles = ["admin", "vendor", "rider", "customer"];
 const manageableAccountRoles = ["super_admin", ...userRoles];
+const normalizeAccountRole = (role = "admin") => {
+  const value = String(role || "").toLowerCase().trim();
+
+  if (value === "homechef" || value === "homechefs") {
+    return "vendor";
+  }
+
+  return value;
+};
 
 const cleanPayload = (payload) => {
   return Object.fromEntries(
@@ -137,7 +148,120 @@ const getManagedTableData = asyncHandler(async (req, res) => {
     });
   }
 
-  const rows = await Model.find().sort({ createdAt: -1 }).lean();
+  let rows = await Model.find().sort({ createdAt: -1 }).lean();
+
+  if (table === "homeChefs") {
+    const [vendors, allOrders, allReviews] = await Promise.all([
+      User.find({ role: "vendor" }).select("-password").lean(),
+      Order.find({}).lean(),
+      Review.find({}).lean(),
+    ]);
+    const chefNames = new Set(rows.map(c => String(c.name || '').toLowerCase().trim()).filter(Boolean));
+    const chefEmails = new Set(rows.map(c => String(c.email || '').toLowerCase().trim()).filter(Boolean));
+    const chefIds = new Set(rows.map(c => String(c._id || '')).filter(Boolean));
+
+    vendors.forEach(u => {
+      const profile = u.partnerProfile || {};
+      const kitchenName = profile.kitchenName || profile.name || u.name;
+      const email = String(u.email || profile.email || '').toLowerCase().trim();
+      const cleanKitchen = String(kitchenName || '').toLowerCase().trim();
+      const userId = String(u._id || '');
+
+      if (!chefIds.has(userId) && (!cleanKitchen || !chefNames.has(cleanKitchen)) && (!email || !chefEmails.has(email))) {
+        rows.push({
+          _id: u._id,
+          name: kitchenName,
+          owner: profile.owner || profile.name || u.name,
+          email: u.email || profile.email || "",
+          phone: u.phone || profile.phone || "",
+          cuisine: profile.cuisine || profile.category || "North Indian",
+          tags: profile.tags || ["Veg", "Home Style"],
+          address: profile.address || profile.location || profile.city || "",
+          liveAddress: profile.liveAddress || profile.address || profile.location || "",
+          location: profile.city || profile.location || "",
+          latitude: profile.latitude,
+          longitude: profile.longitude,
+          weeklyMenu: profile.weeklyMenu || [],
+          sampleMenu: profile.sampleMenu || [],
+          rating: profile.rating || "",
+          orders: 0,
+          status: u.isActive ? (profile.kycStatus === "Approved" ? "Active" : "Review") : "Inactive",
+        });
+        if (cleanKitchen) chefNames.add(cleanKitchen);
+        if (email) chefEmails.add(email);
+        if (userId) chefIds.add(userId);
+      }
+    });
+
+    rows = rows.map(chef => {
+      const chefIdentifiers = [
+        String(chef._id || "").toLowerCase(),
+        String(chef.name || "").toLowerCase(),
+        String(chef.owner || "").toLowerCase(),
+        String(chef.email || "").toLowerCase(),
+      ].filter(Boolean);
+
+      const matchingOrders = (allOrders || []).filter(order => {
+        const orderChefIds = [
+          order.homeChefId,
+          order.homeChefName,
+          order.homeChefOwner,
+          order.chef,
+        ].map(v => String(v || "").toLowerCase().trim()).filter(Boolean);
+        return orderChefIds.some(id => chefIdentifiers.includes(id));
+      });
+
+      const realOrdersCount = Math.max(Number(chef.orders || 0), matchingOrders.length);
+
+      const chefReviews = (allReviews || []).filter(r => {
+        const reviewChef = String(r.chef || "").toLowerCase().trim();
+        return reviewChef && chefIdentifiers.some(id => id.includes(reviewChef) || reviewChef.includes(id));
+      });
+
+      let realRating = chef.rating;
+      if (chefReviews.length > 0) {
+        const sum = chefReviews.reduce((acc, r) => acc + (parseFloat(r.rating) || 0), 0);
+        realRating = (sum / chefReviews.length).toFixed(1);
+      } else if (!realRating || realRating === "4.8") {
+        realRating = (chef.reviewCount && Number(chef.reviewCount) > 0) ? String(chef.rating || "4.5") : "New";
+      }
+
+      return {
+        ...chef,
+        orders: realOrdersCount,
+        rating: realRating,
+      };
+    });
+  }
+
+  if (table === "customers") {
+    const customerUsers = await User.find({ role: "customer" }).select("-password").lean();
+    const customerPhones = new Set(rows.map(c => String(c.phone || "").trim()).filter(Boolean));
+    const customerEmails = new Set(rows.map(c => String(c.email || "").toLowerCase().trim()).filter(Boolean));
+
+    customerUsers.forEach(u => {
+      const phone = String(u.phone || "").trim();
+      const email = String(u.email || "").toLowerCase().trim();
+      const hasMatch = (phone && customerPhones.has(phone)) || (email && customerEmails.has(email));
+      if (!hasMatch) {
+        rows.push({
+          _id: u._id,
+          name: u.name || "MIDDO Customer",
+          phone: u.phone,
+          email: u.email,
+          authProvider: u.authProvider || "local",
+          location: u.city || "",
+          address: u.address || "",
+          liveAddress: u.address || "",
+          walletBalance: 0,
+          orders: 0,
+        });
+        if (phone) customerPhones.add(phone);
+        if (email) customerEmails.add(email);
+      }
+    });
+  }
+
   return sendSuccess(res, 200, `${table} data fetched`, { table, rows });
 });
 
@@ -178,6 +302,49 @@ const updateManagedTableRow = asyncHandler(async (req, res) => {
   });
 
   if (!row) {
+    const userRole = table === "homeChefs" ? "vendor" : table === "customers" ? "customer" : null;
+
+    if (userRole) {
+      const payload = cleanPayload(req.body);
+      const userUpdate = table === "customers"
+        ? {
+            ...(payload.name !== undefined ? { name: payload.name } : {}),
+            ...(payload.email !== undefined ? { email: payload.email } : {}),
+            ...(payload.phone !== undefined ? { phone: payload.phone } : {}),
+            ...(Object.keys(payload).some((key) => ["address", "liveAddress", "location", "latitude", "longitude"].includes(key))
+              ? {
+                  partnerProfile: {
+                    ...(await User.findOne({ _id: id, role: userRole }).select("partnerProfile").lean())?.partnerProfile,
+                    ...Object.fromEntries(
+                      Object.entries(payload).filter(([key]) => ["address", "liveAddress", "location", "latitude", "longitude"].includes(key)),
+                    ),
+                  },
+                }
+              : {}),
+          }
+        : {
+            ...(payload.name !== undefined ? { name: payload.name } : {}),
+            ...(payload.email !== undefined ? { email: payload.email } : {}),
+            ...(payload.phone !== undefined ? { phone: payload.phone } : {}),
+            partnerProfile: {
+              ...(await User.findOne({ _id: id, role: userRole }).select("partnerProfile").lean())?.partnerProfile,
+              ...payload,
+            },
+          };
+      const user = await User.findOneAndUpdate(
+        { _id: id, role: userRole },
+        userUpdate,
+        { returnDocument: "after", runValidators: true },
+      ).select("-password").lean();
+
+      if (user) {
+        return sendSuccess(res, 200, `${table} row updated successfully`, {
+          table,
+          row: { ...user, ...(user.partnerProfile || {}) },
+        });
+      }
+    }
+
     return res.status(404).json({
       success: false,
       message: `${table} row not found`,
@@ -244,6 +411,17 @@ const deleteManagedTableRow = asyncHandler(async (req, res) => {
   const row = await Model.findByIdAndDelete(id);
 
   if (!row) {
+    const userRole = table === "homeChefs" ? "vendor" : table === "customers" ? "customer" : null;
+    if (userRole) {
+      const user = await User.findOneAndDelete({ _id: id, role: userRole });
+      if (user) {
+        return sendSuccess(res, 200, `${table} row deleted successfully`, {
+          table,
+          row: user,
+        });
+      }
+    }
+
     return res.status(404).json({
       success: false,
       message: `${table} row not found`,
@@ -385,6 +563,7 @@ const createAdmin = asyncHandler(async (req, res) => {
     role = "admin",
     isActive = true,
   } = req.body;
+  const normalizedRole = normalizeAccountRole(role);
 
   if (!name || !email || !password) {
     return res.status(400).json({
@@ -393,7 +572,7 @@ const createAdmin = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!manageableAccountRoles.includes(role)) {
+  if (!manageableAccountRoles.includes(normalizedRole)) {
     return res.status(400).json({
       success: false,
       message: "Invalid role selected",
@@ -415,7 +594,7 @@ const createAdmin = asyncHandler(async (req, res) => {
   }
 
   const admin =
-    role === "super_admin"
+    normalizedRole === "super_admin"
       ? await SuperAdmin.create({
           name,
           email: normalizedEmail,
@@ -428,7 +607,7 @@ const createAdmin = asyncHandler(async (req, res) => {
           email: normalizedEmail,
           phone,
           password,
-          role,
+          role: normalizedRole,
           isActive,
         });
 
@@ -437,8 +616,8 @@ const createAdmin = asyncHandler(async (req, res) => {
   return sendSuccess(res, 201, "User created successfully", {
     admin: {
       ...admin.toObject(),
-      role,
-      accountType: role === "super_admin" ? "super_admin" : "user",
+      role: normalizedRole,
+      accountType: normalizedRole === "super_admin" ? "super_admin" : "user",
     },
   });
 });
@@ -457,7 +636,11 @@ const updateAdmin = asyncHandler(async (req, res) => {
   allowedFields.forEach((field) => {
     if (req.body[field] !== undefined && req.body[field] !== "") {
       updates[field] =
-        field === "email" ? req.body[field].toLowerCase() : req.body[field];
+        field === "email"
+          ? req.body[field].toLowerCase()
+          : field === "role"
+            ? normalizeAccountRole(req.body[field])
+            : req.body[field];
     }
   });
 

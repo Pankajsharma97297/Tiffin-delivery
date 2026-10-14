@@ -53,12 +53,32 @@ export async function reverseGeocode(latitude, longitude) {
   }
 
   try {
+    const query = new URLSearchParams({
+      format: 'jsonv2',
+      lat: String(latitude),
+      lon: String(longitude),
+      addressdetails: '1',
+      'accept-language': 'en',
+    }).toString();
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+      `https://nominatim.openstreetmap.org/reverse?${query}`,
+      {
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'en',
+          'User-Agent': 'MIDDO-Partner/1.0 (location lookup)',
+        },
+      },
     );
+    if (!response.ok) {
+      throw new Error(`Reverse geocoding failed with status ${response.status}`);
+    }
     const data = await response.json();
     return (
       data.display_name ||
+      [data.address?.road, data.address?.suburb, data.address?.city || data.address?.town || data.address?.village]
+        .filter(Boolean)
+        .join(', ') ||
       `Live location: ${latitude.toFixed(4)}, ${longitude.toFixed(4)}`
     );
   } catch {
